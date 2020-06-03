@@ -148,7 +148,6 @@ instance (Show l, Show v) => Show (ParserTerm l v) where
       i <- State.get
       State.put $ i + 2
       x <- sx
-      -- State.put $ i + 2*(length str + 1) + measureTilNewLine (clean x)
       pure $ indent i (str <> "\n") <> x
     twoChildren :: String -> State Int String -> State Int String -> State Int String
     twoChildren str sl sr = do

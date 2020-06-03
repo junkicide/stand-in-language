@@ -206,11 +206,38 @@ unitTests = testGroup "Unit tests"
 
 myTrace a = trace (show a) a
 
+myDebug = do
+  preludeFile <- Strict.readFile "Prelude.sil"
+  let prelude = case parsePrelude preludeFile of
+                  Right p -> p
+                  Left pe -> error . getErrorString $ pe
+  case parseWithPrelude dependantTopLevelBindings prelude of
+    Right r -> do
+      let oexpr = optimizeBindingsReference prelude r
+      putStrLn . show $ oexpr
+    Left l -> putStrLn l
+
+myDebug2 = do
+  preludeFile <- Strict.readFile "Prelude.sil"
+  let prelude = case parsePrelude preludeFile of
+                  Right p -> p
+                  Left pe -> error . getErrorString $ pe
+  let (upt, _, _) = rename prelude' expr10'
+      addReplBound name expr = LetUP [(name, expr)]
+      flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
+      flattenOuterLetUP x = x
+      zz = addReplBound "zz" (IntUP 8)
+      prelude' = zz . prelude
+      expr10' = applyUntilNoChange flattenOuterLetUP $ prelude' expr10
+  putStrLn . show $ upt
+
 dependantTopLevelBindings = unlines $
   [ "f = (0,0)"
   , "g = (0,0)"
   , "h = [f,g,f]"
   ]
+
+expr10 = LamUP "y" (LamUP "z" (ListUP [VarUP "zz",VarUP "yy0",VarUP "yy0",VarUP "z",VarUP "zz"]))
 
 -- myDebug2 = do
 --   let (t1, _, _) = rename (ParserState (Map.insert "zz" TZero $ Map.insert "yy0" TZero initialMap ))
@@ -263,20 +290,6 @@ runTictactoe = do
 --     Right r -> printBindings r
 --     Left l -> putStrLn . show $ l
 
-
--- myDebug = do
---   preludeFile <- Strict.readFile "Prelude.sil"
---   let
---     prelude = case parsePrelude preludeFile of
---       Right p -> p
---       Left pe -> error . getErrorString $ pe
---     prelude' = ParserState prelude $ Map.insert "f" (TPair (TVar . Right $ "x") (TVar . Right $ "y")) . Map.insert "y" TZero . Map.insert "x" TZero $ Map.empty
---     oexpr = optimizeLetBindingsReference prelude' $ TVar . Right $ "f"
---     oexpr' = optimizeLetBindingsReference prelude' oexpr
---     oexpr'' = optimizeLetBindingsReference prelude' oexpr'
---   putStrLn . show $ oexpr
---   putStrLn . show $ oexpr'
---   putStrLn . show $ oexpr''
 
   -- let (t1, _, _) = rename (ParserState (Map.insert "zz" TZero $ Map.insert "yy0" TZero initialMap ) Map.empty)
   --                         topLevelBindingNames

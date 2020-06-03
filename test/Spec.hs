@@ -305,7 +305,7 @@ unitTestOptimization name iexpr = if optimize iexpr == optimize2 iexpr
                           , show $ optimize2 iexpr])
   >> pure False
 -}
-quickcheckBuiltInOptimizedDoesNotChangeEval :: UnprocessedParsedTerm -> Bool
+quickcheckBuiltInOptimizedDoesNotChangeEval :: (UnprocessedParsedTerm String) -> Bool
 quickcheckBuiltInOptimizedDoesNotChangeEval up =
   let
       makeSIL f = second (toSIL . findChurchSize) (fmap splitExpr . (>>= debruijinize []) . validateVariables id . f . addBuiltins $ up)

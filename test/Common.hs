@@ -105,9 +105,9 @@ instance Arbitrary ArrowTypedTestIExpr where
   arbitrary = ArrowTypedTestIExpr <$> suchThat arbitrary simpleArrowTyped
   shrink (ArrowTypedTestIExpr atte) = map ArrowTypedTestIExpr . filter simpleArrowTyped $ shrink atte
 
-instance Arbitrary UnprocessedParsedTerm where
+instance Arbitrary (UnprocessedParsedTerm String) where
   arbitrary = sized (genTree []) where
-    leaves :: [String] -> Gen UnprocessedParsedTerm
+    leaves :: [String] -> Gen (UnprocessedParsedTerm String)
     leaves varList =
       oneof $
           (if not (null varList) then ((VarUP <$> elements varList) :) else id)

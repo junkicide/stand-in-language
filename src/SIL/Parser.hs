@@ -41,28 +41,96 @@ import SIL
 import SIL.TypeChecker
 -- import SIL.Prisms
 
-data UnprocessedParsedTerm
-  = VarUP String
-  | ITEUP UnprocessedParsedTerm UnprocessedParsedTerm UnprocessedParsedTerm
-  | LetUP [(String, UnprocessedParsedTerm)] UnprocessedParsedTerm
-  | ListUP [UnprocessedParsedTerm]
+data UnprocessedParsedTerm a
+  = VarUP a
+  | ITEUP (UnprocessedParsedTerm a) (UnprocessedParsedTerm a) (UnprocessedParsedTerm a)
+  | LetUP [(String, (UnprocessedParsedTerm a))] (UnprocessedParsedTerm a)
+  | ListUP [(UnprocessedParsedTerm a)]
   | IntUP Int
   | StringUP String
-  | PairUP UnprocessedParsedTerm UnprocessedParsedTerm
-  | AppUP UnprocessedParsedTerm UnprocessedParsedTerm
-  | LamUP String UnprocessedParsedTerm
+  | PairUP (UnprocessedParsedTerm a) (UnprocessedParsedTerm a)
+  | AppUP (UnprocessedParsedTerm a) (UnprocessedParsedTerm a)
+  | LamUP String (UnprocessedParsedTerm a)
   | ChurchUP Int
   | UnsizedRecursionUP
-  | LeftUP UnprocessedParsedTerm
-  | RightUP UnprocessedParsedTerm
-  | TraceUP UnprocessedParsedTerm
+  | LeftUP (UnprocessedParsedTerm a)
+  | RightUP (UnprocessedParsedTerm a)
+  | TraceUP (UnprocessedParsedTerm a)
   -- TODO check
-  deriving (Eq, Ord, Show)
-makeBaseFunctor ''UnprocessedParsedTerm -- * Functorial version UnprocessedParsedTerm
+  deriving (Eq, Ord, Functor, Foldable, Traversable)
+makeBaseFunctor ''UnprocessedParsedTerm -- ^ Functorial version (UnprocessedParsedTerm)
+makePrisms ''UnprocessedParsedTerm
 
-instance EndoMapper UnprocessedParsedTerm where
+instance (Show v) => Show (UnprocessedParsedTerm v) where
+  show x = State.evalState (cata alg $ x) 0 where
+    alg :: (Base (UnprocessedParsedTerm v)) (State Int String) -> State Int String
+    alg (VarUPF v) = sindent $ "VarUP " <> show v
+    alg (ITEUPF sx sy sz) = do
+      i <- State.get
+      State.put $ i + 2
+      x <- sx
+      State.put $ i + 2
+      y <- sy
+      State.put $ i + 2
+      z <- sz
+      pure $ indent i "ITEUP\n" <> x <> "\n" <> y <> "\n" <> z
+    alg (IntUPF i) = sindent $ "IntUP " <> show i
+    alg (ChurchUPF i) = sindent $ "ChurchUP " <> show i
+    alg (PairUPF sl sr) = twoChildren "PairUP" sl sr
+    alg (AppUPF sl sr) = twoChildren "AppUP" sl sr
+    alg (LeftUPF l) = oneChild "LeftUP" l
+    alg (RightUPF r) = oneChild "RightUP" r
+    alg (TraceUPF sx) = oneChild "TraceUP" sx
+    alg (LamUPF l sx) = oneChild ("LamUP " <> show l) sx
+    alg (LetUPF sl sx) = do
+      i <- State.get
+      let l' = fmap . fmap State.evalState sl
+          l = verticalList l'
+      State.put $ i + 2
+      x <- sx
+      pure $ indent i ("LetUP " <> l <> "\n") <> x
+    alg UnsizedRecursionUPF = sindent "UnsizedRecursionUP"
+    alg (StringUPF str) = sindent $ "\"" <> str <> "\""
+    
+    verticalList :: Int -> [(String, String)] -> State Int String
+    verticalList [] = pure "[]"
+    verticalList [(str, ss)] = do
+      i <- State.get
+      s <- ss
+      pure $ "[" <> printPair str s <> "]\n"
+    verticalList p:ps = do
+      i <- State.get
+      pure $ indent i "[" <> recur i ls <> indent i "]"
+      where
+        recur :: Int -> [(String, State Int String)] -> String
+        recur i [] = ""
+        recur i [x] = 
+      -- p <- printPair p
+      -- pure $ "[(" <> str <> ", " <> s <> ")]"
+    printPair s1 s2 = "(" <> s1 <> ", " <> s2 <> ")"
+    indent i str = replicate i ' ' <> str
+    sindent :: String -> State Int String
+    sindent str = State.get >>= (\i -> pure $ indent i str)
+    oneChild :: String -> State Int String -> State Int String
+    oneChild str sx = do
+      i <- State.get
+      State.put $ i + 2
+      x <- sx
+      pure $ indent i (str <> "\n") <> x
+    twoChildren :: String -> State Int String -> State Int String -> State Int String
+    twoChildren str sl sr = do
+      i <- State.get
+      State.put $ i + 2
+      l <- sl
+      State.put $ i + 2
+      r <- sr
+      pure $ indent i (str <> "\n") <> l <> "\n" <> r
+
+type Bindings = (UnprocessedParsedTerm String) -> (UnprocessedParsedTerm String)
+
+instance Show a => EndoMapper (UnprocessedParsedTerm a) where
   endoMap f = \case
-    VarUP str -> f $ VarUP str
+    VarUP a -> f $ VarUP a
     ITEUP i t e -> f $ ITEUP (recur i) (recur t) (recur e)
     LetUP listmap expr -> f $ LetUP ((second recur) <$> listmap) $ recur expr
     ListUP l -> f $ ListUP (recur <$> l)
@@ -172,7 +240,7 @@ convertPT n (Term3 termMap) =
   in Term4 newMap
 
 -- |Parse a variable.
-parseVariable :: SILParser UnprocessedParsedTerm
+parseVariable :: SILParser (UnprocessedParsedTerm String)
 parseVariable = do
   varName <- identifier
   pure $ VarUP varName
@@ -241,15 +309,15 @@ integer :: SILParser Integer
 integer = toInteger <$> lexeme L.decimal
 
 -- |Parse string literal.
-parseString :: SILParser UnprocessedParsedTerm
+parseString :: SILParser (UnprocessedParsedTerm String)
 parseString = StringUP <$> (char '\"' *> manyTill L.charLiteral (char '\"'))
 
 -- |Parse number (Integer).
-parseNumber :: SILParser UnprocessedParsedTerm
+parseNumber :: SILParser (UnprocessedParsedTerm String)
 parseNumber = (IntUP . fromInteger) <$> integer
 
 -- |Parse a pair.
-parsePair :: SILParser UnprocessedParsedTerm
+parsePair :: SILParser (UnprocessedParsedTerm String)
 parsePair = parens $ do
   a <- scn *> parseLongExpr <* scn
   symbol "," <* scn
@@ -257,14 +325,14 @@ parsePair = parens $ do
   pure $ PairUP a b
 
 -- |Parse a list.
-parseList :: SILParser UnprocessedParsedTerm
+parseList :: SILParser (UnprocessedParsedTerm String)
 parseList = do
   exprs <- brackets (commaSep (scn *> parseLongExpr <*scn))
   pure $ ListUP exprs
 
 -- TODO: make error more descriptive
 -- |Parse ITE (which stands for "if then else").
-parseITE :: SILParser UnprocessedParsedTerm
+parseITE :: SILParser (UnprocessedParsedTerm String)
 parseITE = do
   reserved "if" <* scn
   cond <- (parseLongExpr <|> parseSingleExpr) <* scn
@@ -275,7 +343,7 @@ parseITE = do
   pure $ ITEUP cond thenExpr elseExpr
 
 -- |Parse a single expression.
-parseSingleExpr :: SILParser UnprocessedParsedTerm
+parseSingleExpr :: SILParser (UnprocessedParsedTerm String)
 parseSingleExpr = choice $ try <$> [ parseString
                                    , parseNumber
                                    , parsePair
@@ -287,7 +355,7 @@ parseSingleExpr = choice $ try <$> [ parseString
                                    ]
 
 -- |Parse application of functions.
-parseApplied :: SILParser UnprocessedParsedTerm
+parseApplied :: SILParser (UnprocessedParsedTerm String)
 parseApplied = do
   fargs <- L.lineFold scn $ \sc' ->
     parseSingleExpr `sepBy` try sc'
@@ -297,7 +365,7 @@ parseApplied = do
     _ -> fail "expected expression"
 
 -- |Parse lambda expression.
-parseLambda :: SILParser UnprocessedParsedTerm
+parseLambda :: SILParser (UnprocessedParsedTerm String)
 parseLambda = do
   symbol "\\" <* scn
   variables <- some identifier <* scn
@@ -322,7 +390,7 @@ applyUntilNoChange f x = case x == (f x) of
                            False -> applyUntilNoChange f $ f x
 
 -- |Parse let expression.
-parseLet :: SILParser UnprocessedParsedTerm
+parseLet :: SILParser (UnprocessedParsedTerm String)
 parseLet = do
   reserved "let" <* scn
   lvl <- L.indentLevel
@@ -331,16 +399,21 @@ parseLet = do
   pure $ LetUP bindingsList expr
 
 -- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings.
-extractBindingsList :: (UnprocessedParsedTerm -> UnprocessedParsedTerm)
-                    -> [(String, UnprocessedParsedTerm)]
+extractBindingsList :: Bindings
+                    -> [(String, (UnprocessedParsedTerm String))]
 extractBindingsList bindings = case bindings $ IntUP 0 of
               LetUP b x -> b
-              _ -> error $ unlines [ "`bindings` should be an unapplied LetUP UnprocessedParsedTerm."
+              _ -> error $ unlines [ "`bindings` should be an unapplied LetUP (UnprocessedParsedTerm String)."
                                    , "Called from `extractBindingsList'`"
                                    ]
 
+-- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings keeping only
+-- names as a Set
+extractBindingsNames :: Bindings -> Set String
+extractBindingsNames bindings = Set.fromList $ fst <$> extractBindingsList bindings
+
 -- |Parse long expression.
-parseLongExpr :: SILParser UnprocessedParsedTerm
+parseLongExpr :: SILParser (UnprocessedParsedTerm String)
 parseLongExpr = choice $ try <$> [ parseLet
                                  , parseITE
                                  , parseLambda
@@ -349,35 +422,45 @@ parseLongExpr = choice $ try <$> [ parseLet
                                  ]
 
 -- |Parse church numerals (church numerals are a "$" appended to an integer, without any whitespace separation).
-parseChurch :: SILParser UnprocessedParsedTerm
+parseChurch :: SILParser (UnprocessedParsedTerm String)
 parseChurch = (ChurchUP . fromInteger) <$> (symbol "$" *> integer)
 
-parsePartialFix :: SILParser UnprocessedParsedTerm
+parsePartialFix :: SILParser (UnprocessedParsedTerm String)
 parsePartialFix = symbol "?" *> pure UnsizedRecursionUP
 
 -- |Parse refinement check.
-parseRefinementCheck :: SILParser (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+parseRefinementCheck :: SILParser Bindings
 parseRefinementCheck = pure id <* (symbol ":" *> parseLongExpr)
 
--- -- |True when char argument is not an Int.
--- notInt :: Char -> Bool
--- notInt s = case (readMaybe [s]) :: Maybe Int of
---              Just _ -> False
---              Nothing -> True
+-- |True when char argument is not an Int.
+notInt :: Char -> Bool
+notInt s = case (readMaybe [s]) :: Maybe Int of
+             Just _ -> False
+             Nothing -> True
 
--- -- |Separates name and Int tag.
--- --  Case of no tag, assigned tag is `-1` which will become `0` in `tagVar`
--- getTag :: String -> (String, Int)
--- getTag str = case name == str of
---                   True -> (name, -1)
---                   False -> (name, read $ drop (length str') str)
---   where
---     str' = dropUntil notInt $ reverse str
---     name = take (length str') str
+-- |Separates name and Int tag.
+--  Case of no tag, assigned tag is `-1` which will become `0` in `tagVar`
+getTag :: String -> (String, Int)
+getTag str = case name == str of
+                  True -> (name, -1)
+                  False -> (name, read $ drop (length str') str)
+  where
+    str' = dropUntil notInt $ reverse str
+    name = take (length str') str
 
--- -- |Tags a var with number `i` if it doesn't already contain a number tag, or `i`
--- -- plus the already present number tag, and corrects for name collisions.
--- -- Also returns `Int` tag.
+-- |Tags a var with number `i` if it doesn't already contain a number tag, or `i`
+-- plus the already present number tag, and corrects for name collisions.
+-- Also returns `Int` tag.
+tagVar :: Bindings -- ^Bindings
+       -> String                                           -- ^String to tag
+       -> Int                                              -- ^Candidate tag
+       -> (String, Int)                                    -- ^Tagged String and tag
+tagVar bindings str i = case candidate `Set.member` extractBindingsNames bindings of
+                                 True -> (fst $ tagVar bindings str (i + 1), n + i + 1)
+                                 False -> (candidate, n + i)
+  where
+    (name,n) = getTag str
+    candidate = name ++ (show $ n + i)
 -- tagVar :: ParserState -> (ParserState -> Set String) -> String -> Int -> (String, Int)
 -- tagVar ps bindingNames str i = case candidate `Set.member` bindingNames ps of
 --                                  True -> (fst $ tagVar ps bindingNames str (i + 1), n + i + 1)
@@ -386,8 +469,18 @@ parseRefinementCheck = pure id <* (symbol ":" *> parseLongExpr)
 --     (name,n) = getTag str
 --     candidate = name ++ (show $ n + i)
 
--- -- |Sateful (Int count) string tagging and keeping track of new names and old names with name collision
--- -- avoidance.
+-- |Sateful (Int count) string tagging and keeping track of new names and old names with name collision
+-- avoidance.
+stag :: Bindings -- ^Bindings
+     -> String                                           -- ^String to tag
+     -> State (Int, VarList, VarList) String             -- ^Stateful tagged string
+stag ps str = do
+  (i0, new0, old0) <- State.get
+  let (new1, tag1) = tagVar ps str (i0 + 1)
+  if i0 >= tag1
+    then State.modify (\(_, new, old) -> (i0 + 1, new ++ [new1], old ++ [str]))
+    else State.modify (\(_, new, old) -> (tag1 + 1, new ++ [new1], old ++ [str]))
+  pure new1
 -- stag :: ParserState -> (ParserState -> Set String) -> String -> State (Int, VarList, VarList) String
 -- stag ps bindingNames str = do
 --   (i0, new0, old0) <- State.get
@@ -397,18 +490,27 @@ parseRefinementCheck = pure id <* (symbol ":" *> parseLongExpr)
 --     else State.modify (\(_, new, old) -> (tag1 + 1, new ++ [new1], old ++ [str]))
 --   pure new1
 
--- -- |Renames top level bindings references found on a `Term1` by tagging them with consecutive `Int`s
--- -- while keeping track of new names and substituted names.
--- -- i.e. Let `f` and `g2` be two top level bindings
--- -- then `\g -> [g,f,g2]` would be renamend to `\g -> [g,f1,g3]` in `Term1` representation.
--- -- ["f1","g3"] would be the second part of the triplet (new names), and ["f", "g2"] the third part of
--- -- the triplet (substituted names)
+-- |Renames top level bindings references found on a `(UnprocessedParsedTerm String)` by tagging them with consecutive `Int`s
+-- while keeping track of new names and substituted names.
+-- i.e. Let `f` and `g2` be two top level bindings
+-- then `\g -> [g,f,g2]` would be renamend to `\g -> [g,f1,g3]` in `(UnprocessedParsedTerm String)` representation.
+-- ["f1","g3"] would be the second part of the triplet (new names), and ["f", "g2"] the third part of
+-- the triplet (substituted names)
+rename :: Bindings
+       -> (UnprocessedParsedTerm String)
+       -> ((UnprocessedParsedTerm String), VarList, VarList)
+rename bindings upt = (res, newf, oldf)
+  where
+    toReplace = (varsUPT upt) `Set.intersection` extractBindingsNames bindings
+    sres = traverseOf (traversed . filtered (`Set.member` toReplace)) (stag bindings) upt
+    (res, (_, newf, oldf)) = State.runState sres (1,[],[])
 -- rename :: ParserState -> (ParserState -> Set String) -> Term1 -> (Term1, VarList, VarList)
 -- rename ps bindingNames term1 = (res, newf, oldf)
 --   where
 --     toReplace = (vars term1) `Set.intersection` bindingNames ps
 --     sres = traverseOf (traversed . _Right . filtered (`Set.member` toReplace)) (stag ps bindingNames) term1
 --     (res, (_, newf, oldf)) = State.runState sres (1,[],[])
+
 
 -- -- |Adds bound to `ParserState` if there's no shadowing conflict.
 -- addTopLevelBound :: String -> Term1 -> ParserState -> Maybe ParserState
@@ -438,6 +540,27 @@ parseRefinementCheck = pure id <* (symbol ":" *> parseLongExpr)
 -- optimizeLetBindingsReference parserState annoExp =
 --   optimizeBindingsReference parserState letBindingNames (\str -> (letBound parserState) Map.! str) annoExp
 
+-- parseTopLevelAssignment :: SILParser ()
+-- parseTopLevelAssignment = parseAssignment addTopLevelBound
+
+-- parseLetAssignment :: SILParser ()
+-- parseLetAssignment = parseAssignment addLetBound
+
+-- foldr LamUP term1expr variables
+
+myTrace a = trace (show a) a
+
+optimizeBindingsReference :: Bindings                       -- ^Unapplied LetUP
+                          -> (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
+                          -> (UnprocessedParsedTerm String)
+optimizeBindingsReference bindings annoExp =
+  case new == [] of
+    True -> annoExp
+    False -> foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
+    -- False -> foldl AppUP (makeLambda bindings new t1) (undefined <$> old)
+  where
+    (t1, new, old) = myTrace $ rename bindings annoExp
+    getTerm str = trace str $ fromJust $ lookup str (extractBindingsList bindings)
 -- optimizeBindingsReference :: ParserState
 --                           -> (ParserState -> Set String)
 --                           -> (String -> Term1)
@@ -450,14 +573,8 @@ parseRefinementCheck = pure id <* (symbol ":" *> parseLongExpr)
 --   where
 --     (t1, new, old) = rename parserState bindingNames annoExp
 
--- parseTopLevelAssignment :: SILParser ()
--- parseTopLevelAssignment = parseAssignment addTopLevelBound
-
--- parseLetAssignment :: SILParser ()
--- parseLetAssignment = parseAssignment addLetBound
-
 -- |Parse assignment add adding binding to ParserState.
-parseAssignment :: SILParser (String, UnprocessedParsedTerm)
+parseAssignment :: SILParser (String, (UnprocessedParsedTerm String))
 parseAssignment = do
   var <- identifier <* scn
   annotation <- optional . try $ parseRefinementCheck
@@ -466,12 +583,12 @@ parseAssignment = do
   pure (var, expr)
 
  -- |Parse top level expressions.
-parseTopLevel :: SILParser UnprocessedParsedTerm
+parseTopLevel :: SILParser (UnprocessedParsedTerm String)
 parseTopLevel = do
   bindingList <- scn *> many parseAssignment <* eof
   pure $ LetUP bindingList (fromJust $ lookup "main" bindingList)
 
-parseDefinitions :: SILParser (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+parseDefinitions :: SILParser Bindings
 parseDefinitions = do
   bindingList <- scn *> many parseAssignment <* eof
   pure $ LetUP bindingList
@@ -499,13 +616,19 @@ parseSuccessful parser str =
     Right _ -> pure True
     Left _ -> pure False
 
+-- TODO: Either Errase Implement
+-- -- |This type should be used for (UnprocessedParsedTerm String) with prelude and bindings already
+-- -- applied.
+-- newtype CompleteUPT = MkCUPT (UnprocessedParsedTerm String)
+
 -- |Parse with specified prelude and getting main.
-parseWithPrelude :: String -> (UnprocessedParsedTerm -> UnprocessedParsedTerm)
-                 -> Either String UnprocessedParsedTerm
+parseWithPrelude :: String                                       -- ^String to parse.
+                 -> Bindings                                     -- ^Prelude to include
+                 -> Either String (UnprocessedParsedTerm String) -- ^Parsed result or `String` error.
 parseWithPrelude str prelude = let result = prelude <$> runParser parseTopLevel "" str
                                in first errorBundlePretty result
 
-addBuiltins :: UnprocessedParsedTerm -> UnprocessedParsedTerm
+addBuiltins :: Bindings
 addBuiltins = LetUP
   [ ("zero", IntUP 0)
   , ("left", LamUP "x" (LeftUP (VarUP "x")))
@@ -516,10 +639,23 @@ addBuiltins = LetUP
   ]
 
 -- |Parse prelude.
-parsePrelude :: String -> Either ErrorString (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+parsePrelude :: String -> Either ErrorString Bindings
 parsePrelude str = case runParser parseDefinitions "" str of
   Right pd -> Right (addBuiltins . pd)
   Left x -> Left $ MkES $ errorBundlePretty x
+
+-- |Collect all variable names in a `(UnprocessedParsedTerm String)` expresion excluding terms binded
+--  to lambda args
+varsUPT :: (UnprocessedParsedTerm String) -> Set String
+varsUPT = cata alg where
+  alg :: Base (UnprocessedParsedTerm String) (Set String) -> Set String
+  alg (VarUPF n) = Set.singleton n
+  alg (LamUPF n x) = del n x
+  alg e = F.fold e
+  del :: String -> Set String -> Set String
+  del n x = case Set.member n x of
+              False -> x
+              True -> Set.delete n x
 
 -- |Collect all variable names in a `Term1` expresion excluding terms binded
 --  to lambda args
@@ -537,21 +673,32 @@ vars = cata alg where
 
 -- |`makeLambda ps vl t1` makes a `TLam` around `t1` with `vl` as arguments.
 -- Automatic recognition of Close or Open type of `TLam`.
-makeLambda :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -- ^Bindings
-           -> String                                           -- ^Variable name
+makeLambda :: Bindings -- ^Bindings
+           -> VarList                                          -- ^Variable name
            -> Term1                                            -- ^Lambda body
            -> Term1
-makeLambda bindings str term1 =
+makeLambda bindings variables term1expr =
   case unbound == Set.empty of
-    True -> TLam (Closed str) term1
-    _ -> TLam (Open str) term1
-  where bindings' = Set.fromList $ fst <$> extractBindingsList bindings
-        v = vars term1
-        unbound = ((v \\ bindings') \\ Set.singleton str)
+    True -> TLam (Closed $ head variables) $
+              foldr (\n -> TLam (Open n)) term1expr (tail variables) -- TODO: optimize for orphan variables
+                                                                     -- like in \x -> \y -> y
+    _ -> foldr (\n -> TLam (Open n)) term1expr variables
+  where
+    unbound = (vars term1expr \\ extractBindingsNames bindings) \\ Set.fromList variables
+-- makeLambda :: ParserState -> VarList -> Term1 -> Term1
+-- makeLambda parserState variables term1expr =
+--   case unbound == Set.empty of
+--     True -> TLam (Closed (Right $ head variables)) $
+--               foldr (\n -> TLam (Open (Right n))) term1expr (tail variables)
+--     _ -> foldr (\n -> TLam (Open (Right n))) term1expr variables
+--   where v = vars term1expr
+--         variableSet = Set.fromList variables
+--         unbound = ((v \\ topLevelBindingNames parserState) \\ variableSet)
 
-validateVariables :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> UnprocessedParsedTerm -> Either String Term1
+
+validateVariables :: Bindings -> (UnprocessedParsedTerm String) -> Either String Term1
 validateVariables bindings term =
-  let validateWithEnvironment :: UnprocessedParsedTerm
+  let validateWithEnvironment :: (UnprocessedParsedTerm String)
         -> State.StateT (Map String Term1) (Either String) Term1
       validateWithEnvironment = \case
         LamUP v x -> do
@@ -559,7 +706,7 @@ validateVariables bindings term =
           State.modify (Map.insert v (TVar v))
           result <- validateWithEnvironment x
           State.put oldState
-          pure $ makeLambda bindings v result
+          pure $ makeLambda bindings [v] result
         VarUP n -> do
           definitionsMap <- State.get
           case Map.lookup n definitionsMap of
@@ -592,7 +739,7 @@ validateVariables bindings term =
         TraceUP x -> TTrace <$> validateWithEnvironment x
   in State.evalStateT (validateWithEnvironment term) Map.empty
 
-optimizeBuiltinFunctions :: UnprocessedParsedTerm -> UnprocessedParsedTerm
+optimizeBuiltinFunctions :: Bindings
 optimizeBuiltinFunctions = endoMap optimize where
   optimize = \case
     twoApp@(AppUP (AppUP f x) y) ->
@@ -612,12 +759,11 @@ optimizeBuiltinFunctions = endoMap optimize where
     x -> x
 
 -- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
-process :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> UnprocessedParsedTerm -> Either String Term3
+process :: Bindings -> (UnprocessedParsedTerm String) -> Either String Term3
 process bindings = fmap splitExpr . (>>= debruijinize []) . validateVariables bindings . optimizeBuiltinFunctions
--- process = fmap splitExpr . (>>= debruijinize [] . makeLambda') . validateVariables . optimizeBuiltinFunctions
 
 -- |Parse main.
-parseMain :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> String -> Either String Term3
+parseMain :: Bindings -> String -> Either String Term3
 parseMain prelude s = parseWithPrelude s prelude >>= process prelude
 
 
