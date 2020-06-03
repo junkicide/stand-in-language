@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
@@ -168,25 +169,25 @@ unitTests = testGroup "Unit tests"
   --     fv `compare` (Set.empty) @?= EQ
   , testCase "test automatic open close lambda" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\x -> \\y -> (x, y)"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` closedLambdaPair @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` closedLambdaPair @?= EQ
   , testCase "test automatic open close lambda 2" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\x y -> (x, y)"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` closedLambdaPair @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` closedLambdaPair @?= EQ
   , testCase "test automatic open close lambda 3" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\x -> \\y -> \\z -> z"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` expr6 @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` expr6 @?= EQ
   , testCase "test automatic open close lambda 4" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\x -> (x, x)"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` expr5 @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` expr5 @?= EQ
   , testCase "test automatic open close lambda 5" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\x -> \\x -> \\x -> x"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` expr4 @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` expr4 @?= EQ
   , testCase "test automatic open close lambda 6" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\x -> \\y -> \\z -> [x,y,z]"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` expr3 @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` expr3 @?= EQ
   , testCase "test automatic open close lambda 7" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\a -> (a, (\\a -> (a,0)))"
-      (fromRight TZero $ validateVariables (LetUP []) res) `compare` expr2 @?= EQ
+      (fromRight TZero $ validateVariables [] res) `compare` expr2 @?= EQ
   -- , testCase "rename" $ do
   --     let (t1, _, _) = rename (ParserState (Map.insert "zz" TZero $ Map.insert "yy0" TZero initialMap ) Map.empty)
   --                             topLevelBindingNames
@@ -204,40 +205,47 @@ unitTests = testGroup "Unit tests"
   --       Left err -> assertFailure . show $ err
   ]
 
-myTrace a = trace (show a) a
+-- myTrace a = trace (show a) a
+
+dependantTopLevelBindings = unlines $
+  [ "f = (1,0)"
+  , "g = (0,1)"
+  , "main = [f,g,f]"
+  ]
 
 myDebug = do
   preludeFile <- Strict.readFile "Prelude.sil"
-  let prelude = case parsePrelude preludeFile of
-                  Right p -> p
-                  Left pe -> error . getErrorString $ pe
-  case parseWithPrelude dependantTopLevelBindings prelude of
-    Right r -> do
-      let oexpr = optimizeBindingsReference prelude r
-      putStrLn . show $ oexpr
+  let -- prelude = case parsePrelude preludeFile of
+      --             Right p -> p
+      --             Left pe -> error . getErrorString $ pe
+  case parseWithPrelude dependantTopLevelBindings [] of
+    Right r ->
+      case r of
+        LetUP l x -> do
+          let oexpr = optimizeBindingsReference . applyUntilNoChange flattenOuterLetUP $ r
+          putStrLn . show $ LetUP l oexpr
     Left l -> putStrLn l
+
+-- |\y z -> [zz, yy0, yy0, z, zz]
+expr10 = LetUP [("zz", IntUP 8)] $
+           LamUP "y" (LamUP "z" (ListUP [PairUP (VarUP "zz") (IntUP 0),VarUP "yy0",VarUP "yy0",VarUP "z",VarUP "zz"]))
+
+
+-- flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
+-- flattenOuterLetUP x = x
+
 
 myDebug2 = do
   preludeFile <- Strict.readFile "Prelude.sil"
   let prelude = case parsePrelude preludeFile of
                   Right p -> p
                   Left pe -> error . getErrorString $ pe
-  let (upt, _, _) = rename prelude' expr10'
-      addReplBound name expr = LetUP [(name, expr)]
-      flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
-      flattenOuterLetUP x = x
-      zz = addReplBound "zz" (IntUP 8)
-      prelude' = zz . prelude
-      expr10' = applyUntilNoChange flattenOuterLetUP $ prelude' expr10
-  putStrLn . show $ upt
+  let (upt, new, old) = rename prelude' expr10
+      prelude' = (extractBindings expr10) <> prelude
+      -- expr10' = applyUntilNoChange flattenOuterLetUP $ prelude' expr10
+  putStrLn $ show upt <> "\nnew: " <> show new <> "\nold: " <> show old
 
-dependantTopLevelBindings = unlines $
-  [ "f = (0,0)"
-  , "g = (0,0)"
-  , "h = [f,g,f]"
-  ]
 
-expr10 = LamUP "y" (LamUP "z" (ListUP [VarUP "zz",VarUP "yy0",VarUP "yy0",VarUP "z",VarUP "zz"]))
 
 -- myDebug2 = do
 --   let (t1, _, _) = rename (ParserState (Map.insert "zz" TZero $ Map.insert "yy0" TZero initialMap ))

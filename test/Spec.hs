@@ -308,7 +308,7 @@ unitTestOptimization name iexpr = if optimize iexpr == optimize2 iexpr
 quickcheckBuiltInOptimizedDoesNotChangeEval :: (UnprocessedParsedTerm String) -> Bool
 quickcheckBuiltInOptimizedDoesNotChangeEval up =
   let
-      makeSIL f = second (toSIL . findChurchSize) (fmap splitExpr . (>>= debruijinize []) . validateVariables id . f . addBuiltins $ up)
+      makeSIL f = second (toSIL . findChurchSize) (fmap splitExpr . (>>= debruijinize []) . validateVariables [] . f . (LetUP addBuiltins) $ up)
       iexpr :: Either String (Maybe IExpr)
       iexpr = makeSIL id -- x. validateVariables id . optimizeBuiltinFunctions $ up)
       iexpr' = makeSIL optimizeBuiltinFunctions -- second (toSIL . findChurchSize) (fmap splitExpr . (>>= debruijinize []) . validateVariables id $ up)
