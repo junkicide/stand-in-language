@@ -674,23 +674,13 @@ optimizeBuiltinFunctions = endoMap optimize where
         -- VarUP "check" TODO
     x -> x
 
--- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
-process :: BindingsList -> (UnprocessedParsedTerm String) -> Either String Term3
-process bindings = fmap splitExpr . (>>= debruijinize []) . validateVariables bindings . obr . optimizeBuiltinFunctions
-
-obr :: UnprocessedParsedTerm String -> UnprocessedParsedTerm String
-obr r = case r of
-          LetUP l x -> optimizeBindingsReference l r
-          _ -> error "Nooooooooooooooooooooooooooooo!"
-
-optimizeBindingsReference :: BindingsList
-                          -> (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
+optimizeBindingsReference :: (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
                           -> (UnprocessedParsedTerm String)
-optimizeBindingsReference l = LetUP l . endoMap process . applyUntilNoChange flattenOuterLetUP where
+optimizeBindingsReference = endoMap (process . applyUntilNoChange flattenOuterLetUP) where
   process upterm =
     case new == [] of
       True -> upterm
-      False -> foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
+      False -> maybeWrapperLetUP $ foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
     where
       (t1, new, old) = case upterm of
                          LetUP l x -> rename l x
@@ -699,10 +689,18 @@ optimizeBindingsReference l = LetUP l . endoMap process . applyUntilNoChange fla
                       Just x -> x
                       Nothing -> error . show $ str
       tlbindings = extractBindings upterm
+      maybeWrapperLetUP = case upterm of
+                            LetUP l x -> LetUP l
+                            _ -> id
+  flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
+  flattenOuterLetUP x = x
 
-
-flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
-flattenOuterLetUP x = x
+-- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
+process :: BindingsList -> (UnprocessedParsedTerm String) -> Either String Term3
+process bindings = fmap splitExpr . (>>= debruijinize [])
+                                  . validateVariables bindings
+                                  . optimizeBindingsReference
+                                  . optimizeBuiltinFunctions
 
 -- |Parse main.
 parseMain :: BindingsList -> String -> Either String Term3

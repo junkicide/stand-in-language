@@ -215,15 +215,8 @@ dependantTopLevelBindings = unlines $
 
 myDebug = do
   preludeFile <- Strict.readFile "Prelude.sil"
-  let -- prelude = case parsePrelude preludeFile of
-      --             Right p -> p
-      --             Left pe -> error . getErrorString $ pe
   case parseWithPrelude dependantTopLevelBindings [] of
-    Right r ->
-      case r of
-        LetUP l x -> do
-          let oexpr = LetUP l .optimizeBindingsReference . applyUntilNoChange flattenOuterLetUP $ r
-          putStrLn . show $ oexpr
+    Right r -> putStrLn . show . optimizeBindingsReference $ r
     Left l -> putStrLn l
 
 -- |\y z -> [zz, yy0, yy0, z, zz]
