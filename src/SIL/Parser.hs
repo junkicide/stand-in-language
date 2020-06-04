@@ -504,21 +504,6 @@ rename bindings upt = (res, newf, oldf)
 -- TODO: remove!
 myTrace a = trace (show a) a
 
-optimizeBindingsReference :: (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
-                          -> (UnprocessedParsedTerm String)
-optimizeBindingsReference upterm =
-  case new == [] of
-    True -> upterm
-    False -> foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
-  where
-    (t1, new, old) = case upterm of
-                       LetUP l x -> rename l x
-                       _ -> error "Terms to be optimized by binding reference should be a LetUP. Called from optimizeBindingsReference."
-    getTerm str = case lookup str tlbindings of
-                    Just x -> x
-                    Nothing -> error . show $ str
-    tlbindings = extractBindings upterm
-
 -- |Parse assignment add adding binding to ParserState.
 parseAssignment :: SILParser (String, (UnprocessedParsedTerm String))
 parseAssignment = do
@@ -693,11 +678,28 @@ optimizeBuiltinFunctions = endoMap optimize where
 process :: BindingsList -> (UnprocessedParsedTerm String) -> Either String Term3
 process bindings = fmap splitExpr . (>>= debruijinize []) . validateVariables bindings . obr . optimizeBuiltinFunctions
 
+obr :: UnprocessedParsedTerm String -> UnprocessedParsedTerm String
 obr r = case r of
-          LetUP l x ->
-            let oexpr = optimizeBindingsReference . applyUntilNoChange flattenOuterLetUP $ r
-            in LetUP l oexpr
+          LetUP l x -> optimizeBindingsReference l r
           _ -> error "Nooooooooooooooooooooooooooooo!"
+
+optimizeBindingsReference :: BindingsList
+                          -> (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
+                          -> (UnprocessedParsedTerm String)
+optimizeBindingsReference l = LetUP l . endoMap process . applyUntilNoChange flattenOuterLetUP where
+  process upterm =
+    case new == [] of
+      True -> upterm
+      False -> foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
+    where
+      (t1, new, old) = case upterm of
+                         LetUP l x -> rename l x
+                         x -> (x, [], [])
+      getTerm str = case lookup str tlbindings of
+                      Just x -> x
+                      Nothing -> error . show $ str
+      tlbindings = extractBindings upterm
+
 
 flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
 flattenOuterLetUP x = x
