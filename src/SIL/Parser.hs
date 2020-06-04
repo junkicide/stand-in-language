@@ -480,13 +480,6 @@ tagVar bindings str i = case candidate `Set.member` (Set.fromList $ fst <$> bind
   where
     (name,n) = getTag str
     candidate = name ++ (show $ n + i)
--- tagVar :: ParserState -> (ParserState -> Set String) -> String -> Int -> (String, Int)
--- tagVar ps bindingNames str i = case candidate `Set.member` bindingNames ps of
---                                  True -> (fst $ tagVar ps bindingNames str (i + 1), n + i + 1)
---                                  False -> (candidate, n + i)
---   where
---     (name,n) = getTag str
---     candidate = name ++ (show $ n + i)
 
 -- |Sateful (Int count) string tagging and keeping track of new names and old names with name collision
 -- avoidance.
@@ -500,14 +493,6 @@ stag ps str = do
     then State.modify (\(_, new, old) -> (i0 + 1, new ++ [new1], old ++ [str]))
     else State.modify (\(_, new, old) -> (tag1 + 1, new ++ [new1], old ++ [str]))
   pure new1
--- stag :: ParserState -> (ParserState -> Set String) -> String -> State (Int, VarList, VarList) String
--- stag ps bindingNames str = do
---   (i0, new0, old0) <- State.get
---   let (new1, tag1) = tagVar ps bindingNames str (i0 + 1)
---   if i0 >= tag1
---     then State.modify (\(_, new, old) -> (i0 + 1, new ++ [new1], old ++ [str]))
---     else State.modify (\(_, new, old) -> (tag1 + 1, new ++ [new1], old ++ [str]))
---   pure new1
 
 -- |Renames top level bindings references found on a `(UnprocessedParsedTerm String)` by tagging them with consecutive `Int`s
 -- while keeping track of new names and substituted names.
@@ -533,7 +518,6 @@ optimizeBindingsReference upterm =
   case new == [] of
     True -> upterm
     False -> foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
-    -- False -> foldl AppUP (makeLambda bindings new t1) (undefined <$> old)
   where
     (t1, new, old) = case upterm of
                        LetUP l x -> rename l x
@@ -542,17 +526,6 @@ optimizeBindingsReference upterm =
                     Just x -> x
                     Nothing -> error . show $ str
     tlbindings = extractBindings upterm
--- optimizeBindingsReference :: ParserState
---                           -> (ParserState -> Set String)
---                           -> (String -> Term1)
---                           -> Term1
---                           -> Term1
--- optimizeBindingsReference parserState bindingNames f annoExp =
---   case new == [] of
---     True -> annoExp
---     False -> foldl TApp (makeLambda parserState new t1) (f <$> old)
---   where
---     (t1, new, old) = rename parserState bindingNames annoExp
 
 -- |Parse assignment add adding binding to ParserState.
 parseAssignment :: SILParser (String, (UnprocessedParsedTerm String))
@@ -566,9 +539,6 @@ parseAssignment = do
  -- |Parse top level expressions.
 parseTopLevel :: SILParser BindingsList
 parseTopLevel = scn *> many parseAssignment <* eof
-  -- pure $ LetUP bindingList $ case lookup "main" bindingList of
-  --                              Just x -> x
-  --                              Nothing -> error "No main found on top level defenitions.\nCalled from parseTopLevel"
 
 parseDefinitions :: SILParser BindingsList
 parseDefinitions = do
@@ -598,11 +568,6 @@ parseSuccessful parser str =
     Right _ -> pure True
     Left _ -> pure False
 
--- TODO: Either Errase Implement
--- -- |This type should be used for (UnprocessedParsedTerm String) with prelude and bindings already
--- -- applied.
--- newtype CompleteUPT = MkCUPT (UnprocessedParsedTerm String)
-
 -- |Parse with specified prelude and getting main.
 parseWithPrelude :: String                                       -- ^String to parse.
                  -> BindingsList                                 -- ^Bindings to include
@@ -611,11 +576,7 @@ parseWithPrelude str prelude = first errorBundlePretty $ do
   result <- (prelude <>) <$> runParser parseTopLevel "" str
   case lookup "main" result of
     Just x -> pure $ LetUP result x
-    Nothing -> error "No main found on top level defenitions.\nCalled from parseTopLevel"
-  -- first errorBundlePretty result
-
-  -- pure $ LetUP bindingList $ 
-
+    Nothing -> error "No main found on top level defenitionsCalled from parseTopLevel"
 
 addBuiltins :: BindingsList
 addBuiltins =
@@ -674,16 +635,6 @@ makeLambda bindings variables term1expr =
     _ -> foldr (\n -> TLam (Open n)) term1expr variables
   where
     unbound = (vars term1expr \\ Set.fromList (fst <$> bindings)) \\ Set.fromList variables
--- makeLambda :: ParserState -> VarList -> Term1 -> Term1
--- makeLambda parserState variables term1expr =
---   case unbound == Set.empty of
---     True -> TLam (Closed (Right $ head variables)) $
---               foldr (\n -> TLam (Open (Right n))) term1expr (tail variables)
---     _ -> foldr (\n -> TLam (Open (Right n))) term1expr variables
---   where v = vars term1expr
---         variableSet = Set.fromList variables
---         unbound = ((v \\ topLevelBindingNames parserState) \\ variableSet)
-
 
 validateVariables :: BindingsList -> (UnprocessedParsedTerm String) -> Either String Term1
 validateVariables bindings term =
@@ -701,7 +652,6 @@ validateVariables bindings term =
           case Map.lookup n definitionsMap of
             Just v -> pure v
             _ -> State.lift . Left  $ "No definition found for " <> n
-        --TODO add in Daniel's code
         LetUP bindingsMap inner -> do
           oldBindings <- State.get
           let addBinding (k,v) = do
@@ -760,11 +710,6 @@ obr r = case r of
 flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
 flattenOuterLetUP x = x
 
--- let oexpr = optimizeBindingsReference . applyUntilNoChange flattenOuterLetUP $ myTrace r
-
 -- |Parse main.
 parseMain :: BindingsList -> String -> Either String Term3
 parseMain prelude s = parseWithPrelude s prelude >>= process prelude
-
-
-
