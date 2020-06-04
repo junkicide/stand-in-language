@@ -415,16 +415,8 @@ parseLet = do
 
 -- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings.
 extractBindings (LetUP l _) = l
-extractBindings _ = error "Terms to be optimized by binding reference should be a LetUP. Called from extractBindings."
-
--- -- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings.
--- extractBindingsList :: Bindings
---                     -> [(String, (UnprocessedParsedTerm String))]
--- extractBindingsList bindings = case bindings $ IntUP 0 of
---               LetUP b x -> b
---               _ -> error $ unlines [ "`bindings` should be an unapplied LetUP (UnprocessedParsedTerm String)."
---                                    , "Called from `extractBindingsList'`"
---                                    ]
+extractBindings _ =
+  error "Terms to be optimized by binding reference should be a LetUP. Called from extractBindings."
 
 -- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings keeping only
 -- names as a Set
