@@ -443,22 +443,6 @@ parsePartialFix = symbol "?" *> pure UnsizedRecursionUP
 parseRefinementCheck :: SILParser (UnprocessedParsedTerm String -> UnprocessedParsedTerm String)
 parseRefinementCheck = pure id <* (symbol ":" *> parseLongExpr)
 
--- |True when char argument is not an Int.
-notInt :: Char -> Bool
-notInt s = case (readMaybe [s]) :: Maybe Int of
-             Just _ -> False
-             Nothing -> True
-
--- |Separates name and Int tag.
---  Case of no tag, assigned tag is `-1` which will become `0` in `tagVar`
-getTag :: String -> (String, Int)
-getTag str = case name == str of
-                  True -> (name, -1)
-                  False -> (name, read $ drop (length str') str)
-  where
-    str' = dropUntil notInt $ reverse str
-    name = take (length str') str
-
 -- |Tags a var with number `i` if it doesn't already contain a number tag, or `i`
 -- plus the already present number tag, and corrects for name collisions.
 -- Also returns `Int` tag.
@@ -472,6 +456,16 @@ tagVar bindings str i = case candidate `Set.member` (Set.fromList $ fst <$> bind
   where
     (name,n) = getTag str
     candidate = name ++ (show $ n + i)
+    getTag str = case name == str of
+                      True -> (name, -1)
+                      False -> (name, read $ drop (length str') str)
+      where
+        str' = dropUntil notInt $ reverse str
+        name = take (length str') str
+    notInt :: Char -> Bool
+    notInt s = case (readMaybe [s]) :: Maybe Int of
+                 Just _ -> False
+                 Nothing -> True
 
 -- |Sateful (Int count) string tagging and keeping track of new names and old names with name collision
 -- avoidance.
@@ -500,6 +494,27 @@ rename bindings upt = (res, newf, oldf)
     toReplace = (varsUPT upt) `Set.intersection` (Set.fromList $ fst <$> bindings)
     sres = traverseOf (traversed . filtered (`Set.member` toReplace)) (stag bindings) upt
     (res, (_, newf, oldf)) = State.runState sres (1,[],[])
+
+optimizeBindingsReference :: (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
+                          -> (UnprocessedParsedTerm String)
+optimizeBindingsReference = endoMap (process . applyUntilNoChange flattenOuterLetUP) where
+  process upterm =
+    case new == [] of
+      True -> upterm
+      False -> maybeWrapperLetUP $ foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
+    where
+      (t1, new, old) = case upterm of
+                         LetUP l x -> rename l x
+                         x -> (x, [], [])
+      getTerm str = case lookup str tlbindings of
+                      Just x -> x
+                      Nothing -> error . show $ str
+      tlbindings = extractBindings upterm
+      maybeWrapperLetUP = case upterm of
+                            LetUP l x -> LetUP l
+                            _ -> id
+  flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
+  flattenOuterLetUP x = x
 
 -- TODO: remove!
 myTrace a = trace (show a) a
@@ -673,27 +688,6 @@ optimizeBuiltinFunctions = endoMap optimize where
         _ -> oneApp
         -- VarUP "check" TODO
     x -> x
-
-optimizeBindingsReference :: (UnprocessedParsedTerm String) -- ^(UnprocessedParsedTerm String) to optimize
-                          -> (UnprocessedParsedTerm String)
-optimizeBindingsReference = endoMap (process . applyUntilNoChange flattenOuterLetUP) where
-  process upterm =
-    case new == [] of
-      True -> upterm
-      False -> maybeWrapperLetUP $ foldl AppUP (foldr LamUP t1 new) (getTerm <$> old)
-    where
-      (t1, new, old) = case upterm of
-                         LetUP l x -> rename l x
-                         x -> (x, [], [])
-      getTerm str = case lookup str tlbindings of
-                      Just x -> x
-                      Nothing -> error . show $ str
-      tlbindings = extractBindings upterm
-      maybeWrapperLetUP = case upterm of
-                            LetUP l x -> LetUP l
-                            _ -> id
-  flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
-  flattenOuterLetUP x = x
 
 -- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
 process :: BindingsList -> (UnprocessedParsedTerm String) -> Either String Term3
