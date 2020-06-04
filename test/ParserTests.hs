@@ -222,8 +222,8 @@ myDebug = do
     Right r ->
       case r of
         LetUP l x -> do
-          let oexpr = optimizeBindingsReference . applyUntilNoChange flattenOuterLetUP $ r
-          putStrLn . show $ LetUP l oexpr
+          let oexpr = LetUP l .optimizeBindingsReference . applyUntilNoChange flattenOuterLetUP $ r
+          putStrLn . show $ oexpr
     Left l -> putStrLn l
 
 -- |\y z -> [zz, yy0, yy0, z, zz]
@@ -667,17 +667,16 @@ testList5 = unlines $
 --       putStrLn ("Final state: " ++ show s)
 --     Left err -> putStr (errorBundlePretty err)
 
--- runTictactoe = do
---   preludeFile <- Strict.readFile "Prelude.sil"
---   tictactoe <- Strict.readFile "tictactoe.sil"
---   let
---     prelude = case parsePrelude preludeFile of
---       Right p -> p
---       Left pe -> error $ "woot2!!!" ++ getErrorString pe
---   putStrLn "Not broken till here."
---   case parseMain' prelude $ tictactoe of
---     Right x -> putStrLn . show $ x
---     Left err -> putStrLn $ "woot!!! " ++ getErrorString err
+runTictactoe = do
+  preludeFile <- Strict.readFile "Prelude.sil"
+  tictactoe <- Strict.readFile "tictactoe.sil"
+  let
+    prelude = case parsePrelude preludeFile of
+      Right p -> p
+      Left pe -> error . getErrorString $ pe
+  case parseMain prelude $ tictactoe of
+    Right x -> pure ()
+    Left err -> putStrLn err
 
 
 -- -- |Parse main.

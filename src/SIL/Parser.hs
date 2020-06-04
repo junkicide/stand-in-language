@@ -80,7 +80,7 @@ instance (Show v) => Show (UnprocessedParsedTerm v) where
       i <- State.get
       let l' :: [(String, String)]
           l' = (fmap . fmap) (oneLineShow . flip State.evalState 0) sl
-          l = verticalList i l'
+          l = verticalList i $ l'
       State.put $ i + 2
       x <- sx
       pure $ indent i ("LetUP " <> l <> "\n") <> x
@@ -91,8 +91,8 @@ instance (Show v) => Show (UnprocessedParsedTerm v) where
           printRecur [] = ""
           printRecur (x:xs) = ", " <> oneLineShow x <> printRecur xs
       case l of
-        [] -> pure "[]\n"
-        (x:xs) -> pure . indent i $ ("[" <> show x <> (printRecur xs) <> "]\n")
+        [] -> pure "ListUPF []"
+        (x:xs) -> pure . indent i $ ("ListUPF [" <> show x <> (printRecur xs) <> "]")
     alg (IntUPF i) = sindent $ "IntUP " <> show i
     alg (ChurchUPF i) = sindent $ "ChurchUP " <> show i
     alg (PairUPF sl sr) = twoChildren "PairUP" sl sr
@@ -102,24 +102,26 @@ instance (Show v) => Show (UnprocessedParsedTerm v) where
     alg (TraceUPF sx) = oneChild "TraceUP" sx
     alg (LamUPF l sx) = oneChild ("LamUP " <> show l) sx
     alg UnsizedRecursionUPF = sindent "UnsizedRecursionUP"
-    alg (StringUPF str) = sindent $ "\"" <> str <> "\""
-    
+    alg (StringUPF str) = sindent $ "StringUPF \"" <> str <> "\""
     oneLineShow str = let txt = Text.pack str
-                          res = "(" <> Text.replace "\n" ")(" txt <> ")"
-                      in Text.unpack res
+                          res = Text.replace "\n" " " txt
+                      in cleanSpaces . Text.unpack $ res
+
+    cleanSpaces = let process str = let txt = Text.pack str
+                                    in Text.unpack . Text.replace "  " " " $ txt
+                  in applyUntilNoChange process
     verticalList :: Int -> [(String, String)] -> String
-    verticalList _ [] = "[]\n"
-    verticalList i [(s1, s2)] = "[ " <> printPair s1 s2 <> "]\n"
-    verticalList i ((s1, s2):ps) = indent i "[ " <> printPair s1 s2 <> "\n"
+    verticalList _ [] = "[]"
+    verticalList i [(s1, s2)] = "[" <> printPair s1 s2 <> "]"
+    verticalList i ((s1, s2):ps) = "[ " <> printPair s1 s2 <> "\n"
                                                  <> recur (i + 6) ps
-                                                 <> indent (i + 6) "]\n"
+                                                 <> indent (i + 6) "]"
       where
         recur :: Int -> [(String, String)] -> String
         recur _ [] = ""
         recur i ((s1, s2):ps) = indent i $ ", " <> printPair s1 s2 <> "\n"
                                                 <> recur i ps
-    -- TODO: clean spaces on let bound.
-    printPair s1 s2 = "(" <> s1 <> ", " <> s2 <> ")"
+    printPair s1 s2 = cleanSpaces $ "(" <> s1 <> ", " <> s2 <> ")"
     indent i str = replicate i ' ' <> str
     sindent :: String -> State Int String
     sindent str = State.get >>= (\i -> pure $ indent i str)
@@ -763,5 +765,6 @@ flattenOuterLetUP x = x
 -- |Parse main.
 parseMain :: BindingsList -> String -> Either String Term3
 parseMain prelude s = parseWithPrelude s prelude >>= process prelude
+
 
 
