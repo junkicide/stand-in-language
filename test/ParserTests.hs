@@ -1,30 +1,32 @@
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
-import SIL
-import SIL.Eval
-import SIL.Parser
-import SIL.RunTime
-import Test.Tasty
-import Test.Tasty.HUnit
-import Test.QuickCheck
-import Text.Megaparsec.Error
-import Text.Megaparsec
-import Text.Megaparsec.Debug
-import Data.Bifunctor
-import Data.Either (fromRight)
-import Data.Map (Map, fromList, toList)
-import qualified Data.Map as Map
-import qualified Data.Set as Set
-import Data.Functor.Foldable
-import Debug.Trace (trace)
-import qualified System.IO.Strict as Strict
-import Control.Monad
-import qualified Control.Monad.State as State
-import qualified Data.Semigroup as Semigroup
-import Common
+import           Common
+import           Control.Monad
+import qualified Control.Monad.State       as State
+import           Data.Algorithm.Diff       (getGroupedDiff)
+import           Data.Algorithm.DiffOutput (ppDiff)
+import           Data.Bifunctor
+import           Data.Either               (fromRight)
+import           Data.Functor.Foldable
+import           Data.Map                  (Map, fromList, toList)
+import qualified Data.Map                  as Map
+import qualified Data.Semigroup            as Semigroup
+import qualified Data.Set                  as Set
+import           Debug.Trace               (trace)
+import           SIL
+import           SIL.Eval
+import           SIL.Parser
+import           SIL.RunTime
+import qualified System.IO.Strict          as Strict
+import           Test.QuickCheck
+import           Test.Tasty
+import           Test.Tasty.HUnit
+import           Text.Megaparsec
+import           Text.Megaparsec.Debug
+import           Text.Megaparsec.Error
 
 main = defaultMain tests
 
@@ -188,21 +190,6 @@ unitTests = testGroup "Unit tests"
   , testCase "test automatic open close lambda 7" $ do
       res <- runSILParser (parseLambda <* scn <* eof) "\\a -> (a, (\\a -> (a,0)))"
       (fromRight TZero $ validateVariables [] res) `compare` expr2 @?= EQ
-  -- , testCase "rename" $ do
-  --     let (t1, _, _) = rename (ParserState (Map.insert "zz" TZero $ Map.insert "yy0" TZero initialMap ) Map.empty)
-  --                             topLevelBindingNames
-  --                             expr8
-  --     t1 `compare` expr9 @?= EQ
-  -- , testCase "rename 2" $ do
-  --     preludeFile <- Strict.readFile "Prelude.sil"
-  --     let prelude = case parsePrelude preludeFile of
-  --                     Right p -> p
-  --                     Left pe -> error . getErrorString $ pe
-  --     case parseWithPrelude prelude dependantTopLevelBindings of
-  --       Right x -> do
-  --         expected :: Term1 <- runSILParser (parseApplied <* scn <* eof) "(\\f1 g2 f3 -> [f1,g2,f3]) (0, 0) (0, 0) (0, 0)"
-  --         (x Map.! "h") `compare` expected @?= EQ
-  --       Left err -> assertFailure . show $ err
   ]
 
 -- myTrace a = trace (show a) a
@@ -215,18 +202,16 @@ dependantTopLevelBindings = unlines $
 
 myDebug = do
   preludeFile <- Strict.readFile "Prelude.sil"
-  case parseWithPrelude dependantTopLevelBindings [] of
+  case parseWithPrelude [] dependantTopLevelBindings of
     Right r -> putStrLn . show . optimizeBindingsReference $ r
-    Left l -> putStrLn l
+    Left l  -> putStrLn l
 
 -- |\y z -> [zz, yy0, yy0, z, zz]
 expr10 = LetUP [("zz", IntUP 8)] $
            LamUP "y" (LamUP "z" (ListUP [PairUP (VarUP "zz") (IntUP 0),VarUP "yy0",VarUP "yy0",VarUP "z",VarUP "zz"]))
 
-
 -- flattenOuterLetUP (LetUP l (LetUP l' x)) = LetUP (l' <> l) x
 -- flattenOuterLetUP x = x
-
 
 myDebug2 = do
   preludeFile <- Strict.readFile "Prelude.sil"
@@ -237,8 +222,6 @@ myDebug2 = do
       prelude' = (extractBindings expr10) <> prelude
       -- expr10' = applyUntilNoChange flattenOuterLetUP $ prelude' expr10
   putStrLn $ show upt <> "\nnew: " <> show new <> "\nold: " <> show old
-
-
 
 -- myDebug2 = do
 --   let (t1, _, _) = rename (ParserState (Map.insert "zz" TZero $ Map.insert "yy0" TZero initialMap ))
@@ -257,7 +240,7 @@ testWtictactoe = do
                 Left pe -> error . getErrorString $ pe
   case parseMain prelude tictactoe of
     Right _ -> return True
-    Left _ -> return False
+    Left _  -> return False
 
 {-
 runTictactoe = do
@@ -301,7 +284,7 @@ runTictactoe = do
   -- case parseWithPrelude prelude' dependantTopLevelBindings of
   --   Right x -> do
   --     -- expected :: Term1 <- runSILParser (parseApplied <* scn <* eof) "(\\f0 g1 f1 x -> (x, [f0, g1, x, f1])) f g f"
-  --     putStrLn . show $ (x Map.! "h") -- `compare` expected @?= EQ 
+  --     putStrLn . show $ (x Map.! "h") -- `compare` expected @?= EQ
   --   Left err -> error . show $ err
 
 letExpr = unlines $
@@ -511,7 +494,7 @@ runTestParsePrelude = do
   preludeFile <- Strict.readFile "Prelude.sil"
   case parsePrelude preludeFile of
     Right _ -> return True
-    Left _ -> return False
+    Left _  -> return False
 
 testParseAssignmentwCLwITEwPair2 = unlines $
   [ "main = \\input -> if 1"
@@ -602,7 +585,7 @@ runTestMainwCLwITEwPair = do
       Right p -> p
       Left pe -> error . getErrorString $ pe
   case parseMain prelude testMainwCLwITEwPair of
-    Right x -> return True
+    Right x  -> return True
     Left err -> return False
 
 testMain2 = "main : (\\x -> if x then \"fail\" else 0) = 0"
@@ -614,7 +597,7 @@ runTestMainWType = do
       Right p -> p
       Left pe -> error . getErrorString $ pe
   case parseMain prelude $ testMain2 of
-    Right x -> return True
+    Right x  -> return True
     Left err -> return False
 
 testList0 = unlines $
@@ -668,7 +651,7 @@ runTictactoe = do
       Right p -> p
       Left pe -> error . getErrorString $ pe
   case parseMain prelude $ tictactoe of
-    Right x -> pure ()
+    Right x  -> pure ()
     Left err -> putStrLn err
 
 
@@ -795,3 +778,56 @@ fiveApp = concat
   [ "main = let fiveApp = $5\n"
   , "       in fiveApp (\\x -> (x,0)) 0"
   ]
+
+showAllTransformations :: String -- ^ SIL code
+                       -> IO ()
+showAllTransformations input = do
+  preludeFile <- Strict.readFile "Prelude.sil"
+  let section description body = do
+        putStrLn "\n-----------------------------------------------------------------"
+        putStrLn $ "----" <> description <> ":\n"
+        putStrLn $ body
+      prelude = case parsePrelude preludeFile of
+                  Right x  -> x
+                  Left err -> error . getErrorString $ err
+      upt = case parseWithPrelude prelude input of
+              Right x -> x
+              Left x  -> error x
+  section "Input" input
+  section "UnprocessedParsedTerm" $ show upt
+  section "optimizeBuiltinFunctions" $ show . optimizeBuiltinFunctions $ upt
+  let optimizeBuiltinFunctionsVar = optimizeBuiltinFunctions upt
+      str1 = lines . show $ optimizeBuiltinFunctionsVar
+      str0 = lines . show $ upt
+      diff = getGroupedDiff str0 str1
+  section "Diff optimizeBuiltinFunctions" $ ppDiff diff
+  let optimizeBindingsReferenceVar = optimizeBindingsReference optimizeBuiltinFunctionsVar
+      str2 = lines . show $ optimizeBindingsReferenceVar
+      diff = getGroupedDiff str1 str2
+  section "optimizeBindingsReference" . show $ optimizeBindingsReferenceVar
+  section "Diff optimizeBindingsReference" $ ppDiff diff
+  let validateVariablesVar = validateVariables prelude optimizeBindingsReferenceVar
+      str3 = lines . show $ validateVariablesVar
+      diff = getGroupedDiff str3 str2
+  section "validateVariables" . show $ validateVariablesVar
+  section "Diff validateVariables" $ ppDiff diff
+  let Right debruijinizeVar = (>>= debruijinize []) validateVariablesVar
+      str4 = lines . show $ debruijinizeVar
+      diff = getGroupedDiff str4 str3
+  section "debruijinize" . show $ debruijinizeVar
+  section "Diff debruijinize" $ ppDiff diff
+  let splitExprVar = splitExpr debruijinizeVar
+      str5 = lines . show $ splitExprVar
+      diff = getGroupedDiff str5 str4
+  section "splitExpr" . show $ splitExprVar
+  section "Diff splitExpr" $ ppDiff diff
+  let Just toSILVar = toSIL . findChurchSize $ splitExprVar
+      str6 = lines . show $ toSILVar
+      diff = getGroupedDiff str6 str5
+  section "toSIL" . show $ toSILVar
+  section "Diff toSIL" $ ppDiff diff
+  -- let evalLoopVar = evalLoop toSILVar
+  --     str0 = lines . show $ toSILVar
+  --     diff = getGroupedDiff str0 str1
+  -- section "toSIL" . show $ evalLoopVar
+  -- section "Diff toSIL" $ ppDiff diff

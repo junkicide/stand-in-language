@@ -136,6 +136,19 @@ initState (Term3 termMap) =
 getFragType :: FragIndex -> PartialType
 getFragType (FragIndex i) = ArrTypeP (TypeVariable $ i * 2) (TypeVariable $ i * 2 + 1)
 
+
+-- foo, bar, bar, baz
+-- foo1, bar2, bar3, baz4
+-- getType :: Term3 -> PartialType
+-- getType t3 = do
+--   let annot3 = annotate t3
+
+
+-- TODO: Remove
+-- fullyResolve :: (Int -> Maybe PartialType) -> PartialType -> PartialType
+-- buildTypeMap :: Set TypeAssociation -> Either TypeCheckError (Map Int PartialType)
+-- type AnnotateState = ExceptT TypeCheckError (State (PartialType, Set TypeAssociation, Int))
+                                                                -- data TypeAssociation = TypeAssociation Int PartialType
 annotate :: Term3 -> AnnotateState PartialType
 annotate (Term3 termMap) =
   let annotate' :: FragExpr BreakExtras -> AnnotateState PartialType

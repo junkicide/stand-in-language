@@ -1,37 +1,36 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 module SIL where
 
-import Control.DeepSeq
-import Control.Lens.Combinators
-import Control.Monad.Except
-import Control.Monad.State (State)
-import Data.Char
-import Data.Void
-import Data.Map (Map)
-import Data.Functor.Foldable
-import Data.Functor.Foldable.TH 
-import Data.Functor.Classes
-import GHC.Generics
-import qualified Data.Map as Map
-import qualified Control.Monad.State as State
+import           Control.DeepSeq
+import           Control.Lens.Combinators
+import           Control.Monad.Except
+import           Control.Monad.State      (State)
+import qualified Control.Monad.State      as State
+import           Data.Char
+import           Data.Functor.Classes
+import           Data.Functor.Foldable
+import           Data.Functor.Foldable.TH
+import           Data.Map                 (Map)
+import qualified Data.Map                 as Map
+import           Data.Void
+import           GHC.Generics
 
 -- if classes were categories, this would be an EndoFunctor?
 class EndoMapper a where
   endoMap :: (a -> a) -> a -> a
-             -- (a -> f a) -> s -> f s 
 
 class EitherEndoMapper a where
   eitherEndoMap :: (a -> Either e a) -> a -> Either e a
@@ -84,16 +83,16 @@ data ExprT a
 
 -- there must be a typeclass I can derive that does this
 getA :: ExprA a -> a
-getA (ZeroA a) = a
+getA (ZeroA a)     = a
 getA (PairA _ _ a) = a
-getA (EnvA a) = a
+getA (EnvA a)      = a
 getA (SetEnvA _ a) = a
-getA (DeferA _ a) = a
-getA (AbortA a) = a
+getA (DeferA _ a)  = a
+getA (AbortA a)    = a
 getA (GateA _ _ a) = a
-getA (PLeftA _ a) = a
+getA (PLeftA _ a)  = a
 getA (PRightA _ a) = a
-getA (TraceA a) = a
+getA (TraceA a)    = a
 
 -- | Lambdas can be closed if it's expresion does not depend on any
 --   outer binding.
@@ -119,7 +118,7 @@ data ParserTerm l v
 makeBaseFunctor ''ParserTerm -- * Functorial version ParserTermF
 
 instance (Show l, Show v) => Show (ParserTerm l v) where
-  show x = State.evalState (cata alg $ x) 0 where
+  show x = State.evalState (cata alg x) 0 where
     alg :: (Base (ParserTerm l v)) (State Int String) -> State Int String
     alg TZeroF = sindent "TZero"
     alg (TPairF sl sr) = twoChildren "TPair" sl sr
@@ -157,12 +156,6 @@ instance (Show l, Show v) => Show (ParserTerm l v) where
       State.put $ i + 2
       r <- sr
       pure $ indent i (str <> "\n") <> l <> "\n" <> r
-    -- clean = dropUntil (\c -> c /= ' ')
-    -- measureTilNewLine str = countUntil (\c -> c /= '\n') str
-    -- countUntil _ [] = 0
-    -- countUntil p x@(x1:_) = case p x1 of
-    --                           False -> 1 + countUntil p (drop 1 x)
-    --                           True -> 1
 
 -- |`dropUntil p xs` drops leading elements until `p $ head xs` is satisfied.
 dropUntil :: (a -> Bool) -> [a] -> [a]
@@ -170,7 +163,7 @@ dropUntil _ [] = []
 dropUntil p x@(x1:_) =
   case p x1 of
     False -> dropUntil p (drop 1 x)
-    True -> x
+    True  -> x
 
 newtype FragIndex = FragIndex { unFragIndex :: Int } deriving (Eq, Show, Ord, Enum, NFData, Generic)
 
@@ -207,16 +200,16 @@ type BreakState' a = BreakState a (FragExpr a)
 type IndExpr = ExprA EIndex
 
 instance EndoMapper IExpr where
-  endoMap f Zero = f Zero
+  endoMap f Zero       = f Zero
   endoMap f (Pair a b) = f $ Pair (endoMap f a) (endoMap f b)
-  endoMap f Env = f Env
+  endoMap f Env        = f Env
   endoMap f (SetEnv x) = f $ SetEnv (endoMap f x)
-  endoMap f (Defer x) = f $ Defer (endoMap f x)
-  endoMap f Abort = f Abort
+  endoMap f (Defer x)  = f $ Defer (endoMap f x)
+  endoMap f Abort      = f Abort
   endoMap f (Gate l r) = f $ Gate (endoMap f l) (endoMap f r)
-  endoMap f (PLeft x) = f $ PLeft (endoMap f x)
+  endoMap f (PLeft x)  = f $ PLeft (endoMap f x)
   endoMap f (PRight x) = f $ PRight (endoMap f x)
-  endoMap f Trace = f Trace
+  endoMap f Trace      = f Trace
 
 instance EitherEndoMapper IExpr where
   eitherEndoMap f Zero = f Zero
@@ -291,7 +284,6 @@ env = Env
 twiddle :: IExpr -> IExpr
 twiddle x = setenv (pair (defer (pair (pleft (pright env)) (pair (pleft env) (pright (pright env))))) x)
 app :: IExpr -> IExpr -> IExpr
---app c i = setenv (twiddle (pair i c))
 app c i = setenv (setenv (pair (defer (pair (pleft (pright env)) (pair (pleft env) (pright (pright env)))))
                           (pair i c)))
 check :: IExpr -> IExpr -> IExpr
@@ -349,9 +341,9 @@ pattern EasyTrace :: IExpr -> IExpr
 pattern EasyTrace x = SetEnv (Pair (Defer Trace) x)
 
 countApps :: Int -> IExpr -> Maybe Int
-countApps x FirstArg = pure x
+countApps x FirstArg          = pure x
 countApps x (App SecondArg c) = countApps (x + 1) c
-countApps _ _ = Nothing
+countApps _ _                 = Nothing
 
 pattern ChurchNum :: Int -> IExpr
 pattern ChurchNum x <- TwoArgFun (countApps 0 -> Just x)
@@ -454,12 +446,6 @@ pattern PlusA m n <- LamA (LamA (AppA (AppA m SecondArgA) (AppA (AppA n SecondAr
 pattern MultA :: ExprA a -> ExprA a -> ExprA a
 pattern MultA m n <- LamA (AppA m (AppA n FirstArgA))
 
-{-
-pattern AppF :: FragExpr a -> FragExpr a -> FragExpr a
-pattern AppF c i = SetEnvF (SetEnvF (PairF (DeferF (PairF (LeftF (RightF EnvF)) (PairF (LeftF EnvF) (RightF (RightF EnvF)))))
-                                    (PairF i c)))
--}
-
 data DataType
   = ZeroType
   | ArrType DataType DataType
@@ -469,7 +455,7 @@ data DataType
 newtype PrettyDataType = PrettyDataType DataType
 
 showInternal at@(ArrType _ _) = concat ["(", show $ PrettyDataType at, ")"]
-showInternal t = show . PrettyDataType $ t
+showInternal t                = show . PrettyDataType $ t
 
 instance Show PrettyDataType where
   show (PrettyDataType dt) = case dt of
@@ -502,26 +488,26 @@ instance Show PrettyPartialType where
     (TypeVariable x) -> 'v' : show x
 
 instance EndoMapper DataType where
-  endoMap f ZeroType = f ZeroType
-  endoMap f (ArrType a b) = f $ ArrType (endoMap f a) (endoMap f b)
+  endoMap f ZeroType       = f ZeroType
+  endoMap f (ArrType a b)  = f $ ArrType (endoMap f a) (endoMap f b)
   endoMap f (PairType a b) = f $ PairType (endoMap f a) (endoMap f b)
 
 instance EndoMapper PartialType where
-  endoMap f ZeroTypeP = f ZeroTypeP
-  endoMap f AnyType = f AnyType
+  endoMap f ZeroTypeP        = f ZeroTypeP
+  endoMap f AnyType          = f AnyType
   endoMap f (TypeVariable i) = f $ TypeVariable i
-  endoMap f (ArrTypeP a b) = f $ ArrTypeP (endoMap f a) (endoMap f b)
-  endoMap f (PairTypeP a b) = f $ PairTypeP (endoMap f a) (endoMap f b)
+  endoMap f (ArrTypeP a b)   = f $ ArrTypeP (endoMap f a) (endoMap f b)
+  endoMap f (PairTypeP a b)  = f $ PairTypeP (endoMap f a) (endoMap f b)
 
 mergePairType :: DataType -> DataType
 mergePairType = endoMap f where
   f (PairType ZeroType ZeroType) = ZeroType
-  f x = x
+  f x                            = x
 
 mergePairTypeP :: PartialType -> PartialType
 mergePairTypeP = endoMap f where
   f (PairTypeP ZeroTypeP ZeroTypeP) = ZeroTypeP
-  f x = x
+  f x                               = x
 
 newtype PrettyIExpr = PrettyIExpr IExpr
 
@@ -534,9 +520,9 @@ instance Show PrettyIExpr where
     x -> show x
 
 g2i :: IExpr -> Int
-g2i Zero = 0
+g2i Zero       = 0
 g2i (Pair a b) = 1 + g2i a + g2i b
-g2i x = error $ "g2i " ++ show x
+g2i x          = error $ "g2i " ++ show x
 
 i2g :: Int -> IExpr
 i2g 0 = Zero
@@ -546,9 +532,9 @@ ints2g :: [Int] -> IExpr
 ints2g = foldr (\i g -> Pair (i2g i) g) Zero
 
 g2Ints :: IExpr -> [Int]
-g2Ints Zero = []
+g2Ints Zero       = []
 g2Ints (Pair n g) = g2i n : g2Ints g
-g2Ints x = error $ "g2Ints " ++ show x
+g2Ints x          = error $ "g2Ints " ++ show x
 
 s2g :: String -> IExpr
 s2g = ints2g . map ord
@@ -574,24 +560,24 @@ s2gF = ints2gF . map ord
 
 -- convention is numbers are left-nested pairs with zero on right
 isNum :: IExpr -> Bool
-isNum Zero = True
+isNum Zero          = True
 isNum (Pair n Zero) = isNum n
-isNum _ = False
+isNum _             = False
 
 nextI :: State EIndex EIndex
 nextI = State.state $ \(EIndex n) -> (EIndex n, EIndex (n + 1))
 
 toIndExpr :: IExpr -> State EIndex IndExpr
-toIndExpr Zero = ZeroA <$> nextI
+toIndExpr Zero       = ZeroA <$> nextI
 toIndExpr (Pair a b) = PairA <$> toIndExpr a <*> toIndExpr b <*> nextI
-toIndExpr Env = EnvA <$> nextI
+toIndExpr Env        = EnvA <$> nextI
 toIndExpr (SetEnv x) = SetEnvA <$> toIndExpr x <*> nextI
-toIndExpr (Defer x) = DeferA <$> toIndExpr x <*> nextI
-toIndExpr Abort = AbortA <$> nextI
+toIndExpr (Defer x)  = DeferA <$> toIndExpr x <*> nextI
+toIndExpr Abort      = AbortA <$> nextI
 toIndExpr (Gate l r) = GateA <$> toIndExpr l <*> toIndExpr r <*> nextI
-toIndExpr (PLeft x) = PLeftA <$> toIndExpr x <*> nextI
+toIndExpr (PLeft x)  = PLeftA <$> toIndExpr x <*> nextI
 toIndExpr (PRight x) = PRightA <$> toIndExpr x <*> nextI
-toIndExpr Trace = TraceA <$> nextI
+toIndExpr Trace      = TraceA <$> nextI
 
 toIndExpr' :: IExpr -> IndExpr
 toIndExpr' x = State.evalState (toIndExpr x) (EIndex 0)
