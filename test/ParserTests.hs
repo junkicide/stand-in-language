@@ -5,6 +5,9 @@ module Main where
 
 import           Common
 import           Control.Monad
+import           Control.Monad.Except      (ExceptT, MonadError, runExceptT)
+import           Control.Monad.Fix         (fix)
+import           Control.Monad.IO.Class    (liftIO)
 import qualified Control.Monad.State       as State
 import           Data.Algorithm.Diff       (getGroupedDiff)
 import           Data.Algorithm.DiffOutput (ppDiff)
@@ -826,8 +829,41 @@ showAllTransformations input = do
       diff = getGroupedDiff str6 str5
   section "toSIL" . show $ toSILVar
   section "Diff toSIL" $ ppDiff diff
-  -- let evalLoopVar = evalLoop toSILVar
-  --     str0 = lines . show $ toSILVar
-  --     diff = getGroupedDiff str0 str1
-  -- section "toSIL" . show $ evalLoopVar
-  -- section "Diff toSIL" $ ppDiff diff
+  putStrLn "\n-----------------------------------------------------------------"
+  putStrLn $ "---- stepEval:\n"
+  x <- stepEval toSILVar
+  putStrLn .show $ x
+  -- let iEvalVar0 = iEval () Zero toSILVar
+
+
+
+stepEval :: IExpr -> IO IExpr
+stepEval g = do
+  x <- runExceptT $ fix myEval Zero g
+  case x of
+    Left e  -> error . show $ e
+    Right a -> pure a
+
+-- TODO: Remove
+-- iEval :: MonadError RunTimeError m => (IExpr -> IExpr -> m IExpr) -> IExpr -> IExpr -> m IExpr
+
+-- |EvalStep :: * -> *
+type EvalStep = ExceptT RunTimeError IO
+
+myEval :: (IExpr -> IExpr -> EvalStep IExpr) -> IExpr -> IExpr -> EvalStep IExpr
+myEval f e g = do
+  liftIO $ putStrLn . show $ (e, g)
+  iEval f e g
+
+-- main = \x -> (x,0)
+-- Pair (Defer (Pair (PLeft Env) Zero)) Zero
+
+-- main = \x -> ((x,x),0)
+-- Pair (Defer (Pair (Pair (PLeft Env) (PLeft Env)) Zero)) Zero
+
+-- main = \ x -> \ y -> ((x,y), 0)
+-- Pair (Defer (Pair (Defer (Pair (Pair (PLeft (PRight Env)) (PLeft Env)) Zero)) Env)) Zero
+--  ^            ^            ^     ^
+--  w            x            y     z
+
+--              w and x are similar, z and y are similar
