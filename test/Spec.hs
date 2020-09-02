@@ -409,31 +409,7 @@ unitTests_ parse = do
       unitTest2 = unitTest2' parse
       unitTestRuntime = unitTestRuntime' parse
       unitTestSameResult = unitTestSameResult' parse
-  unitTestType "main = \\x -> (x,0)" (PairTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (== Nothing)
-  unitTestType "main = \\x -> (x,0)" ZeroTypeP isInconsistentType
-  unitTestType "main = succ 0" ZeroTypeP (== Nothing)
-  unitTestType "main = succ 0" (ArrTypeP ZeroTypeP ZeroTypeP) isInconsistentType
-  unitTestType "main = or 0" (PairTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (== Nothing)
-  unitTestType "main = or 0" ZeroTypeP isInconsistentType
-  unitTestType "main = or succ" (ArrTypeP ZeroTypeP ZeroTypeP) isInconsistentType
-  unitTestType "main = 0 succ" ZeroTypeP isInconsistentType
-  unitTestType "main = 0 0" ZeroTypeP isInconsistentType
-  unitTestType "main = (if 0 then (\\x -> (x,0)) else (\\x -> (x,1))) 0" ZeroTypeP (== Nothing)
-  -- I guess this is inconsistently typed now?
-  unitTestType "main = \\f -> (\\x -> f (x x)) (\\x -> f (x x))"
-    (ArrTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (/= Nothing) -- isRecursiveType
-  unitTestType "main = (\\x y -> x y x) (\\y x -> y (x y x))"
-    (ArrTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (/= Nothing) -- isRecursiveType
-  unitTestType "main = (\\f -> (\\x -> x x) (\\x -> f (x x)))"
-    (ArrTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (/= Nothing) -- isRecursiveType
-  unitTestType "main = (\\x y -> y (x x y)) (\\x y -> y ( x x y))"
-    (ArrTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (/= Nothing) -- isRecursiveType
-  unitTestType "main = (\\x y -> y (\\z -> x x y z)) (\\x y -> y (\\z -> x x y z))"
-    (ArrTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (/= Nothing) -- isRecursiveType
-  unitTestType "main = (\\f x -> f (\\v -> x x v) (\\x -> f (\\v -> x x v)))"
-    (ArrTypeP (ArrTypeP ZeroTypeP ZeroTypeP) ZeroTypeP) (/= Nothing) -- isRecursiveType
-  unitTestType "main = (\\f -> f 0) (\\g -> (g,0))" ZeroTypeP (== Nothing)
-  unitTestType "main : (\\x -> if x then \"fail\" else 0) = 0" ZeroTypeP (== Nothing)
+  unitTest2 "main = c2d (minus $2 $1)" "1"
   {-
   unitTest2 "main = quicksort [4,3,7,1,2,4,6,9,8,5,7]"
     "(0,(2,(3,(4,(4,(5,(6,(7,(7,(8,10))))))))))"
@@ -678,9 +654,10 @@ foreign import ccall "gc.h GC_allow_register_threads" gcAllowRegisterThreads :: 
 
 unitTest2' parse s r = it s $ case parse s of
   Left e -> expectationFailure $ concat ["failed to parse ", s, " ", show e]
-  Right g -> fmap (show . PrettyIExpr) (testEval g) >>= \r2 -> if r2 == r
-    then pure ()
-    else expectationFailure $ concat [s, " result ", r2]
+  Right g -> fmap (show . PrettyIExpr) (testEval g) >>= \r2 ->
+    if r2 == r
+      then pure ()
+      else expectationFailure $ concat [s, " result ", r2]
 
 unitTestType' parse s t tef = it s $ case parse s of
   Left e -> expectationFailure $ concat ["failed to parse ", s, " ", show e]
@@ -780,5 +757,6 @@ main = do
   result <- pure False
 -}
   hspec $ do
-    unitTests parse
+    unitTests_ parse
+    -- unitTests parse
     --nexprTests

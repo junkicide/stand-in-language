@@ -77,7 +77,9 @@ run jitConfig fn = do
 -- |Recursively follow all integers by interpreting them as indices
 -- in the pair array until a 0 is found.
 convertPairs :: RunResult -> IO NResult
-convertPairs _ = pure NZero
+convertPairs _ = do
+  putStrLn "hello from convertPairs"
+  pure NZero
 {-
 convertPairs (RunResult x _) = go x
   where
@@ -396,11 +398,17 @@ evalJIT jitConfig amod = do
             OJ.withIRCompileLayer linkingLayer tm $ \compileLayer -> do
               mainSymbol <- OJ.mangleSymbol compileLayer "main"
               asm <- moduleLLVMAssembly mod
-              BSC.putStrLn asm
+              BSC.putStrLn asm -- This prints LLVM module
               OJ.withModuleKey es $ \k ->
                 OJ.withSymbolResolver es (OJ.SymbolResolver (resolver compileLayer)) $ \sresolver -> do
                   modifyIORef' resolvers (Map.insert k sresolver)
+                  putStrLn "hello from evalJIT"
+                  -- print compileLayer
+                  -- putStrLn "-----------------"
+                  -- print mainSymbol
                   rsym <- OJ.findSymbol compileLayer mainSymbol True
+                  print rsym
+                  putStrLn "hello from evalJIT2"
                   case rsym of
                     Left err -> pure . Left $ show err
                     Right (OJ.JITSymbol mainFn _) -> do
@@ -609,96 +617,95 @@ toLLVM :: Map FragIndex ExprFrag -> ExprFrag -> TelomareBuilder Operand
 toLLVM = undefined
 -- chunks of AST that can be translated to optimized instructions
 -- single instruction translation
-{-
-toLLVM _ _ FZero = pure zero
-toLLVM helpers envType (FPair a b) = do
-  oa <- toLLVM helpers envType a
-  ob <- toLLVM helpers envType b
-  makePair oa ob
-toLLVM helpers (FLeft x) = toLLVM helpers x >>= doLeft
-toLLVM helpers (FRight x) = toLLVM helpers x >>= doRight
-toLLVM _ FEnv = pure envC
-toLLVM helpers (FDefer x) = doFunction x
-toLLVM helpers (FSetEnv x) = do
-  -- Evaluate x to (clo, env)
-  xp <- toLLVM helpers x
-  ptr <- IRI.inttoptr xp pairPtrT
-  l <- IRI.gep ptr [zero, zero32]
-  r <- IRI.gep ptr [zero, one32]
-  clo <- IRI.load l 0
-  env <- IRI.load r 0
-  funPtr <- IRI.inttoptr clo funT
-  -- Call the function stored at clo with argument env
-  IRI.call funPtr [(env, [])]
-toLLVM helpers (FGate x) = do
-  lx <- toLLVM helpers x
-  bool <- IRI.icmp IP.NE lx zero
-  IRI.select bool
-    (ConstantOperand (C.PtrToInt (C.GlobalReference funT "goRight") intT))
-    (ConstantOperand (C.PtrToInt (C.GlobalReference funT "goLeft") intT))
-toLLVM helpers (FAbort x) = mdo
-  lx <- toLLVM helpers x
-  brCond <- IRI.icmp IP.EQ lx zero
-  emitTerm (CondBr brCond exitB abortB [])
+-- toLLVM _ _ FZero = pure zero
+-- toLLVM helpers envType (FPair a b) = do
+--   oa <- toLLVM helpers envType a
+--   ob <- toLLVM helpers envType b
+--   makePair oa ob
+-- toLLVM helpers (FLeft x) = toLLVM helpers x >>= doLeft
+-- toLLVM helpers (FRight x) = toLLVM helpers x >>= doRight
+-- toLLVM _ FEnv = pure envC
+-- toLLVM helpers (FDefer x) = doFunction x
+-- toLLVM helpers (FSetEnv x) = do
+--   -- Evaluate x to (clo, env)
+--   xp <- toLLVM helpers x
+--   ptr <- IRI.inttoptr xp pairPtrT
+--   l <- IRI.gep ptr [zero, zero32]
+--   r <- IRI.gep ptr [zero, one32]
+--   clo <- IRI.load l 0
+--   env <- IRI.load r 0
+--   funPtr <- IRI.inttoptr clo funT
+--   -- Call the function stored at clo with argument env
+--   IRI.call funPtr [(env, [])]
+-- toLLVM helpers (FGate x) = do
+--   lx <- toLLVM helpers x
+--   bool <- IRI.icmp IP.NE lx zero
+--   IRI.select bool
+--     (ConstantOperand (C.PtrToInt (C.GlobalReference funT "goRight") intT))
+--     (ConstantOperand (C.PtrToInt (C.GlobalReference funT "goLeft") intT))
+-- toLLVM helpers (FAbort x) = mdo
+--   lx <- toLLVM helpers x
+--   brCond <- IRI.icmp IP.EQ lx zero
+--   emitTerm (CondBr brCond exitB abortB [])
 
-  abortB <- block `named` "abort"
-  _ <- IRI.call (ConstantOperand (C.GlobalReference longjmpT "w_longjmp")) [(lx, [])]
-  IRI.unreachable
+--   abortB <- block `named` "abort"
+--   _ <- IRI.call (ConstantOperand (C.GlobalReference longjmpT "w_longjmp")) [(lx, [])]
+--   IRI.unreachable
 
-  exitB <- block `named` "exit"
-  pure zero
--- toLLVM (NNum i) = int64 (fromIntegral i)
-toLLVM (NAdd a b) = do
-  a' <- toLLVM a
-  b' <- toLLVM b
-  IRI.add a' b'
-toLLVM (NMult a b) = do
-  a' <- toLLVM a
-  b' <- toLLVM b
-  IRI.mul a' b'
-toLLVM (NITE c t f) = mdo
-  c' <- toLLVM c
-  cond <- IRI.icmp IP.NE c' zero
-  IRI.condBr cond ifThen ifElse
+--   exitB <- block `named` "exit"
+--   pure zero
+-- -- toLLVM (NNum i) = int64 (fromIntegral i)
+-- toLLVM (NAdd a b) = do
+--   a' <- toLLVM a
+--   b' <- toLLVM b
+--   IRI.add a' b'
+-- toLLVM (NMult a b) = do
+--   a' <- toLLVM a
+--   b' <- toLLVM b
+--   IRI.mul a' b'
+-- toLLVM (NITE c t f) = mdo
+--   c' <- toLLVM c
+--   cond <- IRI.icmp IP.NE c' zero
+--   IRI.condBr cond ifThen ifElse
 
-  ifThen <- block `named` "if.then"
-  trueVal <- toLLVM t
-  ifThenEnd <- currentBlock
-  IRI.br ifExit
+--   ifThen <- block `named` "if.then"
+--   trueVal <- toLLVM t
+--   ifThenEnd <- currentBlock
+--   IRI.br ifExit
 
-  ifElse <- block `named` "if.else"
-  falseVal <- toLLVM f
-  ifElseEnd <- currentBlock
-  IRI.br ifExit
+--   ifElse <- block `named` "if.else"
+--   falseVal <- toLLVM f
+--   ifElseEnd <- currentBlock
+--   IRI.br ifExit
 
-  ifExit <- block `named` "if.exit"
-  IRI.phi [(trueVal, ifThenEnd), (falseVal, ifElseEnd)]
-toLLVM (NtoChurch x) = do
-  cf <- doAnonFunction $ do
-    innerF <- doAnonFunction $ mdo
-      startI <- toLLVM x
-      fun <- doRight envC >>= doLeft
-      funPtr <- IRI.inttoptr fun funT
-      savedEnv <- doRight envC
-      entry <- currentBlock
-      IRI.br loop
+--   ifExit <- block `named` "if.exit"
+--   IRI.phi [(trueVal, ifThenEnd), (falseVal, ifElseEnd)]
+-- toLLVM (NtoChurch x) = do
+--   cf <- doAnonFunction $ do
+--     innerF <- doAnonFunction $ mdo
+--       startI <- toLLVM x
+--       fun <- doRight envC >>= doLeft
+--       funPtr <- IRI.inttoptr fun funT
+--       savedEnv <- doRight envC
+--       entry <- currentBlock
+--       IRI.br loop
 
-      loop <- block `named` "toChurch.loop"
-      currentI <- IRI.phi [(startI, entry), (nextI, loop)]
-      currentVal <- IRI.phi [(envC, entry), (nextV, loop)]
-      fResult <- IRI.call funPtr [(currentVal, [])]
-      nextV <- makePair fResult savedEnv
-      nextI <- IRI.sub currentI one
-      cond <- IRI.icmp IP.EQ nextI zero
-      IRI.condBr cond exit loop
+--       loop <- block `named` "toChurch.loop"
+--       currentI <- IRI.phi [(startI, entry), (nextI, loop)]
+--       currentVal <- IRI.phi [(envC, entry), (nextV, loop)]
+--       fResult <- IRI.call funPtr [(currentVal, [])]
+--       nextV <- makePair fResult savedEnv
+--       nextI <- IRI.sub currentI one
+--       cond <- IRI.icmp IP.EQ nextI zero
+--       IRI.condBr cond exit loop
 
-      exit <- block `named` "toChurch.exit"
-      pure fResult
-    makePair innerF envC
-  makePair cf envC
--- TODO this will be hard
-toLLVM (NTrace x) = toLLVM x
--}
+--       exit <- block `named` "toChurch.exit"
+--       pure fResult
+--     makePair innerF envC
+--   makePair cf envC
+-- -- TODO this will be hard
+-- toLLVM (NTrace x) = toLLVM x
+
 
 resultC :: Operand
 resultC = ConstantOperand $ C.GlobalReference (PointerType resultStructureT (AddrSpace.AddrSpace 0)) resultStructureN

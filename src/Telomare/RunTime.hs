@@ -270,6 +270,9 @@ llvmEval nexprs = do
     Right x -> pure x
 
 
+nResult2NExprs :: NResult -> NExprs
+nResult2NExprs nr = NExprs (Map.singleton (FragIndex 0) nr)
+
 
 optimizedEval :: IExpr -> IO IExpr
 optimizedEval e = do
@@ -280,8 +283,6 @@ optimizedEval e = do
     fromNExprs :: NExprs -> IExpr
     fromNExprs x = fromMaybe Zero (toTelomare x) -- FIX this hack
     toNExpr x = fromTelomare x
-    nResult2NExprs :: NResult -> NExprs
-    nResult2NExprs nr = NExprs (Map.singleton (FragIndex 0) nr)
 -- optimizedEval = fastInterpretEval -- FIX
 
 pureEval :: IExpr -> Either RunTimeError IExpr
