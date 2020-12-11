@@ -12,4 +12,6 @@ MyInt = let intTag = unique
                    then 0
                    else "expecting MyInt"
            )
-main = \i -> ((left MyInt) 8, 0)
+-- main = \i -> ((left MyInt) 8, 0)
+
+main = \ i : if i then "b" else 0 -> (i, 0)
