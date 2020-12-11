@@ -304,15 +304,58 @@ parseApplied = do
       pure $ foldl AppUP f args
     _ -> fail "expected expression"
 
+-- -- foo : right MyInt = 0
+-- -- foo : (right MyInt) = 0
+
+
+-- foo = \ i : (right MyInt) -> 0
+-- foo = \ i : right MyInt -> 0
+-- foo = \ (i : right MyInt) (e : right MyChar) -> 0
+
+-- foo = \ i ->  let i' : (right MyInt) = i
+--               in 0
+
+-- annotation <- optional . try $ parseRefinementCheck
+-- case annotation of
+--   Just x -> CheckUP x foo
+--   Nothing -> foo
+
+-- identifier :: TelomareParser String
+
 -- |Parse lambda expression.
 parseLambda :: TelomareParser UnprocessedParsedTerm
 parseLambda = do
   symbol "\\" <* scn
-  variables <- some identifier <* scn
+  variables <- some identifierWithOptionalTypeCheck <* scn
   symbol "->" <* scn
   -- TODO make sure lambda names don't collide with bound names
   term1expr <- parseLongExpr <* scn
-  pure $ foldr LamUP term1expr variables
+  pure $ foldr wrap term1expr variables
+    where
+      wrap :: (String, Maybe (UnprocessedParsedTerm -> UnprocessedParsedTerm)) -> UnprocessedParsedTerm -> UnprocessedParsedTerm
+      wrap = \case
+        (str, Nothing) -> LamUP str
+        (str, Just x) -> LamUP str . x
+
+identifierWithOptionalTypeCheck :: TelomareParser (String, Maybe (UnprocessedParsedTerm -> UnprocessedParsedTerm))
+identifierWithOptionalTypeCheck = do
+  str <- identifier
+  annotation <- optional . try $ parseRefinementCheck
+  pure (str, annotation)
+
+-- -- |Parse lambda expression.
+-- parseLambda :: TelomareParser UnprocessedParsedTerm
+-- parseLambda = do
+--   symbol "\\" <* scn
+--   variables <- some identifier <* scn
+--   symbol "->" <* scn
+--   -- TODO make sure lambda names don't collide with bound names
+--   term1expr <- parseLongExpr <* scn
+--   pure $ foldr LamUP term1expr variables
+
+-- |Parse refinement check.
+parseRefinementCheck :: TelomareParser (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+parseRefinementCheck = CheckUP <$> (symbol ":" *> parseLongExpr)
 
 -- |Parser that fails if indent level is not `pos`.
 parseSameLvl :: Pos -> TelomareParser a -> TelomareParser a
@@ -362,10 +405,6 @@ parseChurch = (ChurchUP . fromInteger) <$> (symbol "$" *> integer)
 
 parsePartialFix :: TelomareParser UnprocessedParsedTerm
 parsePartialFix = symbol "?" *> pure UnsizedRecursionUP
-
--- |Parse refinement check.
-parseRefinementCheck :: TelomareParser (UnprocessedParsedTerm -> UnprocessedParsedTerm)
-parseRefinementCheck = CheckUP <$> (symbol ":" *> parseLongExpr)
 
 -- |Parse assignment add adding binding to ParserState.
 parseAssignment :: TelomareParser (String, UnprocessedParsedTerm)

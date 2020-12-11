@@ -141,4 +141,5 @@ staticAbortSetEval sRecur env ft' it' =
           -- From Defer
           x -> sRecur it x
         AnnotateX _ nf -> setEval nf it
+        z -> error $ "abortingSetEval unexpected: " <> show z
   in setEval ft' it'

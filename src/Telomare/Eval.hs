@@ -111,9 +111,10 @@ removeChecks (Term4 m) =
   in Term4 $ Map.map (transform f) newM
 
 runStaticChecks :: Term4 -> Maybe String
-runStaticChecks (Term4 termMap) = case ((toPossible (termMap Map.!) staticAbortSetEval AnyX (rootFrag termMap)) :: Either String (PossibleExpr Void Void)) of
-  Left s -> pure s
-  _      -> Nothing
+runStaticChecks (Term4 termMap) =
+  case ((toPossible (termMap Map.!) staticAbortSetEval AnyX (rootFrag termMap)) :: Either String (PossibleExpr Void Void)) of
+    Left s -> pure s
+    _      -> Nothing
 
 compile :: Term3 -> Either EvalError IExpr
 compile t = let sized = findChurchSize t

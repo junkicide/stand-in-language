@@ -550,6 +550,8 @@ unitTests parse = do
     unitTestStaticChecks "main : (\\x -> if 0 then \"fail\" else 0) = 1" $ Nothing
     unitTestStaticChecks "main : (\\f -> if f 2 then \"boop\" else 0) = \\x -> left x" $ Just "boop"
     unitTestStaticChecks "main : (\\f -> if f 2 then \"boop\" else 0) = \\x -> left (left x)" $ Nothing
+    unitTestStaticChecks "main = let f = \\x : (if x then \"b\" else 0) -> 0 in f 0" $ Nothing
+    unitTestStaticChecks "main = let f = \\x : (if x then 0 else \"b\") -> 0 in f 0" $ Just "b"
 
   describe "unitTest2" $ do
     unitTest2 "main = 0" "0"
