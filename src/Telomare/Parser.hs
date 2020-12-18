@@ -56,6 +56,7 @@ data UnprocessedParsedTerm
   | RightUP UnprocessedParsedTerm
   | TraceUP UnprocessedParsedTerm
   | CheckUP UnprocessedParsedTerm UnprocessedParsedTerm
+  | CaseUP UnprocessedParsedTerm UnprocessedParsedTerm
   -- TODO check
   deriving (Eq, Ord, Show)
 makeBaseFunctor ''UnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
@@ -296,15 +297,103 @@ parseApplied = do
       pure $ foldl AppUP f args
     _ -> fail "expected expression"
 
--- |Parse lambda expression.
+-- main = input -> case input of
+--                   Pair a b -> foo a b
+--                   Zero -> bar
+
+-- parseCaseUP :: TelomareParser UnprocessedParsedTerm
+-- parseCaseUP = do
+--   symbol "case" <* sc
+--   patternMatched <- parseSingleExpresion
+--   -- TODO: case `patternMatched` for ad hoc user defined types here
+
+--   let compiled =
+--         case process id patternMatched of
+--           Left s   -> Left $ "Process Error on case matching: " <> s
+--           Right t3 ->
+--             case compile t3 of
+--               Left s      -> Left $ "Compile Error on case matching " <> s
+--               Right iexpr -> Right iexpr
+--   case compiled of
+--     Left e -> fail e
+--     Right iexpr -> do
+--       symbol "of" <* scn
+--       lvl <- L.indentLevel
+--       parseIExprCases lvl patternMatched iexpr
+
+-- parseIExprCases :: Pos                   -- ^Indentation level of both cases.
+--                 -> UnprocessedParsedTerm -- ^Cased term.
+--                 -> IExpr                 -- ^Wanted case.
+--                 -> TelomareParser UnprocessedParsedTerm
+-- parseIExprCases lvl upt = \case
+--   Zero -> psl (pairCaseParse ZeroUP ZeroUP) *> scn *> psl zeroCaseParse
+--       <|> psl zeroCaseParse <* scn <* psl (pairCaseParse ZeroUP ZeroUP)
+--       <|> partialCasePattern
+--   Pair a b -> psl (pairCaseParse (LeftUTP upt) (RightUPT upt)) <* scn <* psl zeroCaseParse
+--           <|> psl zeroCaseParse *> scn *> psl (pairCaseParse (LeftUP upt) (RightUP upt))
+--           <|> partialCasePattern
+--   _ -> fail "Pattern matched cases should only be Zero or Pair."
+--     where partialCasePattern = fail $ "Partial function at IExpr pattern match." <>
+--                                       " You should match for both Pair and Zero"
+--           psl = parseSameLvl lvl
+
+parseCaseUP :: TelomareParser UnprocessedParsedTerm
+parseCaseUP = do
+  symbol "case" <* sc
+  patternMatched <- parseSingleExpr
+  symbol "of" <* scn
+  lvl <- L.indentLevel
+  -- TODO: case `patternMatched` for ad hoc user defined types here
+  parseIExprCases lvl patternMatched
+
+parseIExprCases :: Pos                   -- ^Indentation level of both cases.
+                -> UnprocessedParsedTerm -- ^Cased term.
+                -> TelomareParser UnprocessedParsedTerm
+parseIExprCases lvl upt =
+  let psl = parseSameLvl lvl
+      partialCasePattern = fail $ "Partial function at IExpr pattern match." <>
+                                  " You should match for both Pair and Zero"
+  in
+      ITEUP upt
+  <$> (psl (pairCaseParse (IntUP 0) (IntUP 0)) *> scn *> psl zeroCaseParse
+   <|> psl zeroCaseParse <* scn <* psl (pairCaseParse (IntUP 0) (IntUP 0))
+   <|> partialCasePattern)
+  <*> (psl (pairCaseParse (LeftUP upt) (RightUP upt)) <* scn <* psl zeroCaseParse
+   <|> psl zeroCaseParse *> scn *> psl (pairCaseParse (LeftUP upt) (RightUP upt))
+   <|> partialCasePattern)
+
+    where
+
+pairCaseParse :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> TelomareParser UnprocessedParsedTerm
+pairCaseParse = undefined
+
+zeroCaseParse :: TelomareParser UnprocessedParsedTerm
+zeroCaseParse = undefined
+
 parseLambda :: TelomareParser UnprocessedParsedTerm
-parseLambda = do
+parseLambda = parseSimpleLambda <|> parseCaseLambda
+
+-- |Parse lambda expression.
+parseSimpleLambda :: TelomareParser UnprocessedParsedTerm
+parseSimpleLambda = do
   symbol "\\" <* scn
   variables <- some identifier <* scn
   symbol "->" <* scn
   -- TODO make sure lambda names don't collide with bound names
   term1expr <- parseLongExpr <* scn
   pure $ foldr LamUP term1expr variables
+
+-- |Parse lambda expression.
+parseCaseLambda :: TelomareParser UnprocessedParsedTerm
+parseCaseLambda = do
+  symbol "\\case" <* scn
+  undefined
+  -- variables <- some identifier <* scn
+  -- symbol "->" <* scn
+  -- -- TODO make sure lambda names don't collide with bound names
+  -- term1expr <- parseLongExpr <* scn
+  -- pure $ foldr LamUP term1expr variables
+
 
 -- |Parser that fails if indent level is not `pos`.
 parseSameLvl :: Pos -> TelomareParser a -> TelomareParser a
