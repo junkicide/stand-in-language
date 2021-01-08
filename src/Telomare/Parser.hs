@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TypeFamilies        #-}
@@ -40,26 +41,118 @@ import           Text.Megaparsec.Debug
 import           Text.Megaparsec.Pos
 import           Text.Read                  (readMaybe)
 
-data UnprocessedParsedTerm
+data BaseUnprocessedParsedTerm a
   = VarUP String
-  | ITEUP UnprocessedParsedTerm UnprocessedParsedTerm UnprocessedParsedTerm
-  | LetUP [(String, UnprocessedParsedTerm)] UnprocessedParsedTerm
-  | ListUP [UnprocessedParsedTerm]
+  | ITEUP (BaseUnprocessedParsedTerm a) (BaseUnprocessedParsedTerm a) (BaseUnprocessedParsedTerm a)
+  | LetUP [(String, (BaseUnprocessedParsedTerm a))] (BaseUnprocessedParsedTerm a)
+  | ListUP [(BaseUnprocessedParsedTerm a)]
   | IntUP Int
   | StringUP String
-  | PairUP UnprocessedParsedTerm UnprocessedParsedTerm
-  | AppUP UnprocessedParsedTerm UnprocessedParsedTerm
-  | LamUP String UnprocessedParsedTerm
+  | PairUP (BaseUnprocessedParsedTerm a) (BaseUnprocessedParsedTerm a)
+  | AppUP (BaseUnprocessedParsedTerm a) (BaseUnprocessedParsedTerm a)
+  | LamUP String (BaseUnprocessedParsedTerm a)
   | ChurchUP Int
   | UnsizedRecursionUP
-  | LeftUP UnprocessedParsedTerm
-  | RightUP UnprocessedParsedTerm
-  | TraceUP UnprocessedParsedTerm
-  | CheckUP UnprocessedParsedTerm UnprocessedParsedTerm
-  | CaseUP UnprocessedParsedTerm UnprocessedParsedTerm
+  | LeftUP (BaseUnprocessedParsedTerm a)
+  | RightUP (BaseUnprocessedParsedTerm a)
+  | TraceUP (BaseUnprocessedParsedTerm a)
+  | CheckUP (BaseUnprocessedParsedTerm a) (BaseUnprocessedParsedTerm a)
+  | CaseUP' a (BaseUnprocessedParsedTerm a) [((BaseUnprocessedParsedTerm a), (BaseUnprocessedParsedTerm a))]
   -- TODO check
   deriving (Eq, Ord, Show)
-makeBaseFunctor ''UnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
+makeBaseFunctor ''BaseUnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
+
+type UnprocessedParsedTerm = BaseUnprocessedParsedTerm ()
+type UnprocessedParsedTermSansCase = BaseUnprocessedParsedTerm Void
+pattern CaseUP ptrn cases = CaseUP' () ptrn cases
+
+-- caseUP = CaseUP ()
+
+-- data UnprocessedParsedTermF x
+--   = VarUPF String
+--   | ITEUPF x x x
+--   | LetUPF [(String, x)] x
+--   | ListUPF [x]
+--   | IntUPF Int
+--   | StringUPF String
+--   | PairUPF x x
+--   | AppUPF x x
+--   | LamUPF String x
+--   | ChurchUPF Int
+--   | UnsizedRecursionUPF
+--   | LeftUPF x
+--   | RightUPF x
+--   | TraceUPF x
+--   | CheckUPF x x
+--   | CaseUPF x [(x, x)]
+--   deriving (Functor, Foldable, Traversable)
+
+-- type instance Base UnprocessedParsedTerm = UnprocessedParsedTermF
+
+-- instance Recursive UnprocessedParsedTerm where
+--   project = \case
+--     VarUP str          -> VarUPF str
+--     ITEUP x y z        -> ITEUPF x y z
+--     LetUP [(str, x)] y -> LetUPF [(str, x)] y
+--     ListUP [x]         -> ListUPF [x]
+--     IntUP i            -> IntUPF i
+--     StringUP str       -> StringUPF str
+--     PairUP x y         -> PairUPF x y
+--     AppUP x y          -> AppUPF x y
+--     LamUP str x        -> LamUPF str x
+--     ChurchUP i         -> ChurchUPF i
+--     UnsizedRecursionUP -> UnsizedRecursionUPF
+--     LeftUP x           -> LeftUPF x
+--     RightUP x          -> RightUPF x
+--     TraceUP x          -> TraceUPF x
+--     CheckUP x y        -> CheckUPF x y
+--     CaseUP x [(y, z)]  -> CaseUPF x [(y, z)]
+
+-- instance Corecursive UnprocessedParsedTerm where
+--   embed = \case
+--     VarUPF str          -> VarUP str
+--     ITEUPF x y z        -> ITEUP x y z
+--     LetUPF [(str, x)] y -> LetUP [(str, x)] y
+--     ListUPF [x]         -> ListUP [x]
+--     IntUPF i          -> IntUP i
+--     StringUPF str       -> StringUP str
+--     PairUPF x y         -> PairUP x y
+--     AppUPF x y          -> AppUP x y
+--     LamUPF str x        -> LamUP str x
+--     ChurchUPF i         -> ChurchUP
+--     UnsizedRecursionUPF -> UnsizedRecursionUP
+--     LeftUPF x           -> LeftUP x
+--     RightUPF x          -> RightUP x
+--     TraceUPF x          -> TraceUP x
+--     CheckUPF x y        -> CheckUP x y
+--     CaseUPF x [(y, z)]  -> CaseUP x [(y, z)]
+
+
+-- instance Recursive (Expr a) where
+--     project (Lit x)   = LitF x
+--     project (Add x y) = AddF x y
+--     project (x :* y)  = x :*$ y
+
+-- instance Corecursive (Expr a) where
+--     embed (LitF x)   = Lit x
+--     embed (AddF x y) = Add x y
+--     embed (x :*$ y)  = x :* y
+
+-- data Expr a
+--     = Lit a
+--     | Add (Expr a) (Expr a)
+--     | Expr a :* [Expr a]
+--   deriving (Show)
+-- makeBaseFunctor ''Expr
+
+-- data ExprF a x
+--     = LitF a
+--     | AddF x x
+--     | x :*$ [x]
+--   deriving (Functor, Foldable, Traversable)
+
+-- type instance Base (Expr a) = ExprF a
+-- LetUP [(String, (BaseUnprocessedParsedTerm a))] (BaseUnprocessedParsedTerm a)
 
 instance Plated UnprocessedParsedTerm where
   plate f = \case
@@ -73,6 +166,8 @@ instance Plated UnprocessedParsedTerm where
     RightUP x -> RightUP <$> f x
     TraceUP x -> TraceUP <$> f x
     CheckUP c x -> CheckUP <$> f c <*> f x
+    -- CaseUP ptrn cases -> CaseUP <$> f ptrn <*> traverse sequenceA ((bimap f f) <$> cases)
+    -- CaseUP' a ptrn cases ->
     x -> pure x
 
 type VarList = [String]
@@ -297,85 +392,74 @@ parseApplied = do
       pure $ foldl AppUP f args
     _ -> fail "expected expression"
 
--- main = input -> case input of
---                   Pair a b -> foo a b
---                   Zero -> bar
-
--- parseCaseUP :: TelomareParser UnprocessedParsedTerm
--- parseCaseUP = do
---   symbol "case" <* sc
---   patternMatched <- parseSingleExpresion
---   -- TODO: case `patternMatched` for ad hoc user defined types here
-
---   let compiled =
---         case process id patternMatched of
---           Left s   -> Left $ "Process Error on case matching: " <> s
---           Right t3 ->
---             case compile t3 of
---               Left s      -> Left $ "Compile Error on case matching " <> s
---               Right iexpr -> Right iexpr
---   case compiled of
---     Left e -> fail e
---     Right iexpr -> do
---       symbol "of" <* scn
---       lvl <- L.indentLevel
---       parseIExprCases lvl patternMatched iexpr
-
--- parseIExprCases :: Pos                   -- ^Indentation level of both cases.
---                 -> UnprocessedParsedTerm -- ^Cased term.
---                 -> IExpr                 -- ^Wanted case.
---                 -> TelomareParser UnprocessedParsedTerm
--- parseIExprCases lvl upt = \case
---   Zero -> psl (pairCaseParse ZeroUP ZeroUP) *> scn *> psl zeroCaseParse
---       <|> psl zeroCaseParse <* scn <* psl (pairCaseParse ZeroUP ZeroUP)
---       <|> partialCasePattern
---   Pair a b -> psl (pairCaseParse (LeftUTP upt) (RightUPT upt)) <* scn <* psl zeroCaseParse
---           <|> psl zeroCaseParse *> scn *> psl (pairCaseParse (LeftUP upt) (RightUP upt))
---           <|> partialCasePattern
---   _ -> fail "Pattern matched cases should only be Zero or Pair."
---     where partialCasePattern = fail $ "Partial function at IExpr pattern match." <>
---                                       " You should match for both Pair and Zero"
---           psl = parseSameLvl lvl
-
-parseCaseUP :: TelomareParser UnprocessedParsedTerm
-parseCaseUP = do
+-- |Parse case expression.
+parseCase :: TelomareParser UnprocessedParsedTerm
+parseCase = do
   symbol "case" <* sc
   patternMatched <- parseSingleExpr
   symbol "of" <* scn
   lvl <- L.indentLevel
   -- TODO: case `patternMatched` for ad hoc user defined types here
-  parseIExprCases lvl patternMatched
+  paternCaseList <- some (parseSameLvl lvl parsePatternAndCase) <* scn
+  pure $ CaseUP patternMatched paternCaseList
 
-parseIExprCases :: Pos                   -- ^Indentation level of both cases.
-                -> UnprocessedParsedTerm -- ^Cased term.
-                -> TelomareParser UnprocessedParsedTerm
-parseIExprCases lvl upt =
-  let psl = parseSameLvl lvl
-      partialCasePattern = fail $ "Partial function at IExpr pattern match." <>
-                                  " You should match for both Pair and Zero"
-  in
-      ITEUP upt
-  <$> (psl (pairCaseParse (IntUP 0) (IntUP 0)) *> scn *> psl zeroCaseParse
-   <|> psl zeroCaseParse <* scn <* psl (pairCaseParse (IntUP 0) (IntUP 0))
-   <|> partialCasePattern)
-  <*> (psl (pairCaseParse (LeftUP upt) (RightUP upt)) <* scn <* psl zeroCaseParse
-   <|> psl zeroCaseParse *> scn *> psl (pairCaseParse (LeftUP upt) (RightUP upt))
-   <|> partialCasePattern)
+-- |Helper parser for cases of a case expression.
+parsePatternAndCase :: TelomareParser (UnprocessedParsedTerm, UnprocessedParsedTerm)
+parsePatternAndCase = do
+  pattern' <- parseSingleExpr <* scn
+  symbol "->" <* scn
+  caseOfPattern <- parseLongExpr <* scn
+  pure (pattern', caseOfPattern)
 
-    where
+-- -- |Parse case into ITE structure
+-- parseCase :: TelomareParser UnprocessedParsedTerm
+-- parseCase = do
+--   symbol "case" <* sc
+--   patternMatched <- parseSingleExpr
+--   symbol "of" <* scn
+--   lvl <- L.indentLevel
+--   -- TODO: case `patternMatched` for ad hoc user defined types here
+--   parseIExprCases lvl patternMatched
 
-pairCaseParse :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> TelomareParser UnprocessedParsedTerm
-pairCaseParse = undefined
+-- -- |Zero and Pair case pattern matching.
+-- parseIExprCases :: Pos                   -- ^Indentation level of both cases.
+--                 -> UnprocessedParsedTerm -- ^Cased term.
+--                 -> TelomareParser UnprocessedParsedTerm
+-- parseIExprCases lvl upt =
+--   let psl = parseSameLvl lvl
+--       partialCasePattern = fail $ "Partial function at IExpr pattern match." <>
+--                                   " You should match for both Pair and Zero"
+--   in
+--       ITEUP upt
+--   <$> (psl (pairCaseParse (LeftUP upt) (RightUP upt)) <* scn <* psl zeroCaseParse
+--    <|> psl zeroCaseParse *> scn *> psl (pairCaseParse (LeftUP upt) (RightUP upt))
+--    <|> partialCasePattern)
+--   <*> (psl (pairCaseParse (IntUP 0) (IntUP 0)) *> scn *> psl zeroCaseParse
+--    <|> psl zeroCaseParse <* scn <* psl (pairCaseParse (IntUP 0) (IntUP 0))
+--    <|> partialCasePattern)
 
-zeroCaseParse :: TelomareParser UnprocessedParsedTerm
-zeroCaseParse = undefined
+-- ---------- Something wrong here! do I even need x, y?
+-- -- |Parse pair pattern match.
+-- pairCaseParse :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> TelomareParser UnprocessedParsedTerm
+-- pairCaseParse x y = do
+--   symbol "Pair" <* scn
+--   a <- identifier <* scn
+--   b <- identifier <* scn
+--   symbol "->" <* scn
+--   expr <- parseLongExpr <* scn
+--   pure $ LamUP a . LamUP b $ expr
 
-parseLambda :: TelomareParser UnprocessedParsedTerm
-parseLambda = parseSimpleLambda <|> parseCaseLambda
+
+-- -- |Parse zero pattern match.
+-- zeroCaseParse :: TelomareParser UnprocessedParsedTerm
+-- zeroCaseParse = symbol "Zero" *> scn *> symbol "->" *> scn *> parseSingleExpr
+
+-- parseLambda :: TelomareParser UnprocessedParsedTerm
+-- parseLambda = parseSimpleLambda <|> parseCaseLambda
 
 -- |Parse lambda expression.
-parseSimpleLambda :: TelomareParser UnprocessedParsedTerm
-parseSimpleLambda = do
+parseLambda :: TelomareParser UnprocessedParsedTerm
+parseLambda = do
   symbol "\\" <* scn
   variables <- some identifier <* scn
   symbol "->" <* scn
@@ -431,6 +515,7 @@ extractBindingsList bindings = case bindings $ IntUP 0 of
 -- |Parse long expression.
 parseLongExpr :: TelomareParser UnprocessedParsedTerm
 parseLongExpr = choice $ try <$> [ parseLet
+                                 , parseCase
                                  , parseITE
                                  , parseLambda
                                  , parseApplied
@@ -547,8 +632,9 @@ makeLambda bindings str term1 =
 validateVariables :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> UnprocessedParsedTerm -> Either String Term1
 validateVariables bindings term =
   let validateWithEnvironment :: UnprocessedParsedTerm
-        -> State.StateT (Map String Term1) (Either String) Term1
+                              -> State.StateT (Map String Term1) (Either String) Term1
       validateWithEnvironment = \case
+        -- CaseUP p cases -> do
         LamUP v x -> do
           oldState <- State.get
           State.modify (Map.insert v (TVar v))
@@ -587,6 +673,10 @@ validateVariables bindings term =
         TraceUP x -> TTrace <$> validateWithEnvironment x
         CheckUP cf x -> TCheck <$> validateWithEnvironment cf <*> validateWithEnvironment x
   in State.evalStateT (validateWithEnvironment term) Map.empty
+
+-- removeCaseUP :: UnprocessedParsedTerm -> UnprocessedParsedTermSansCase
+-- removeCaseUP upt = transform f where
+--   f = undefined
 
 optimizeBuiltinFunctions :: UnprocessedParsedTerm -> UnprocessedParsedTerm
 optimizeBuiltinFunctions = transform optimize where

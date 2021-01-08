@@ -6,8 +6,8 @@ module Main where
 
 import           Common
 import           Control.Monad
-import           Control.Monad.Error
-import           Control.Monad.Except      (ExceptT, MonadError, runExceptT)
+import           Control.Monad.Except      (ExceptT, MonadError, catchError,
+                                            runExceptT, throwError)
 import           Control.Monad.Fix         (fix)
 import           Control.Monad.IO.Class    (liftIO)
 import qualified Control.Monad.State       as State
@@ -43,7 +43,14 @@ tests = testGroup "Tests" [unitTests]
 
 unitTests :: TestTree
 unitTests = testGroup "Unit tests"
-  [ testCase "test function applied to a string that has whitespaces in both sides inside a structure" $ do
+  [ testCase "implement pattern matching in parser #49 basic examples" $ do
+      res <- parseSuccessful (parseCase <* eof) basicCaseExamples
+      res `compare` True @?= EQ
+  , testCase "parseTopLevel with a case" $ do
+      res1 <- parseSuccessful (parseTopLevel <* eof) basicCaseExamples'
+      res2 <- parseSuccessful (parseTopLevel <* eof) basicCaseExamples''
+      (res1 && res2) `compare` True @?= EQ
+  , testCase "test function applied to a string that has whitespaces in both sides inside a structure" $ do
       res1 <- parseSuccessful parseLongExpr "(foo \"woops\" , 0)"
       res2 <- parseSuccessful parseLongExpr "(foo \"woops\" )"
       res3 <- parseSuccessful parseLongExpr "if 0 then foo \"woops\" else 0"
@@ -221,6 +228,37 @@ unitTests = testGroup "Unit tests"
   --         (x Map.! "h") `compare` expected @?= EQ
   --       Left err -> assertFailure . show $ err
   ]
+
+
+
+
+basicCaseExamples = unlines $
+  [ "case input of"
+  , "  (a, (b, c)) -> foo a b c"
+  , "  \"string\" -> bar"
+  , "  [a, b, c] -> foo a b c"
+  , "  2 -> bar"
+  , "  [(a,b), c, 2] -> foo a b c"
+  ]
+
+basicCaseExamples' = unlines $
+  [ "main = case input of"
+  , "         (a, (b, c)) -> foo a b c"
+  , "         \"string\" -> bar"
+  , "         [a, b, c] -> foo a b c"
+  , "         2 -> bar"
+  , "         [(a,b), c, 2] -> foo a b c"
+  ]
+
+basicCaseExamples'' = unlines $
+  [ "main = \\input -> case input of"
+  , "                   (a, (b, c)) -> foo a b c"
+  , "                   \"string\" -> bar"
+  , "                   [a, b, c] -> foo a b c"
+  , "                   2 -> bar"
+  , "                   [(a,b), c, 2] -> foo a b c"
+  ]
+
 
 myTrace a = trace (show a) a
 
