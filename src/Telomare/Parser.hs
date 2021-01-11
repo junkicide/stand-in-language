@@ -58,7 +58,6 @@ data BaseUnprocessedParsedTerm a
   | TraceUP (BaseUnprocessedParsedTerm a)
   | CheckUP (BaseUnprocessedParsedTerm a) (BaseUnprocessedParsedTerm a)
   | CaseUP' a (BaseUnprocessedParsedTerm a) [((BaseUnprocessedParsedTerm a), (BaseUnprocessedParsedTerm a))]
-  -- TODO check
   deriving (Eq, Ord, Show)
 makeBaseFunctor ''BaseUnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
 
@@ -157,7 +156,7 @@ pattern CaseUP ptrn cases = CaseUP' () ptrn cases
 instance Plated UnprocessedParsedTerm where
   plate f = \case
     ITEUP i t e -> ITEUP <$> f i <*> f t <*> f e
-    LetUP l x -> LetUP <$> traverse sequenceA (second f <$> l) <*> f x
+    LetUP l x -> LetUP <$> traverse sequenceA (fmap f <$> l) <*> f x
     ListUP l -> ListUP <$> traverse f l
     PairUP a b -> PairUP <$> f a <*> f b
     AppUP u x -> AppUP <$> f u <*> f x
@@ -166,9 +165,19 @@ instance Plated UnprocessedParsedTerm where
     RightUP x -> RightUP <$> f x
     TraceUP x -> TraceUP <$> f x
     CheckUP c x -> CheckUP <$> f c <*> f x
-    -- CaseUP ptrn cases -> CaseUP <$> f ptrn <*> traverse sequenceA ((bimap f f) <$> cases)
-    -- CaseUP' a ptrn cases ->
+    CaseUP ptrn cases -> CaseUP <$> f ptrn
+                                <*> (fmap . fmap) sameTypePair2Pair
+                                      (traverse sequenceA ((fmap f . pair2SameTypePair) <$> cases))
     x -> pure x
+
+data SameTypePair a = SameTypePair a a
+  deriving (Functor, Foldable, Traversable)
+
+sameTypePair2Pair :: SameTypePair a -> (a,a)
+sameTypePair2Pair (SameTypePair x y) = (x, y)
+
+pair2SameTypePair :: (a, a) -> SameTypePair a
+pair2SameTypePair (x, y) = SameTypePair x y
 
 type VarList = [String]
 
@@ -674,9 +683,29 @@ validateVariables bindings term =
         CheckUP cf x -> TCheck <$> validateWithEnvironment cf <*> validateWithEnvironment x
   in State.evalStateT (validateWithEnvironment term) Map.empty
 
--- removeCaseUP :: UnprocessedParsedTerm -> UnprocessedParsedTermSansCase
--- removeCaseUP upt = transform f where
---   f = undefined
+removeCaseUP :: UnprocessedParsedTerm -> UnprocessedParsedTermSansCase
+removeCaseUP = \case
+  CaseUP ptrn cases  -> caseup2iteup ptrn cases
+  VarUP str          -> VarUP str
+  ITEUP x y z        -> ITEUP (removeCaseUP x) (removeCaseUP y) (removeCaseUP z)
+  LetUP xs y         -> LetUP ((fmap removeCaseUP) <$> xs) (removeCaseUP y)
+  ListUP xs          -> ListUP (removeCaseUP <$> xs)
+  IntUP i            -> IntUP i
+  StringUP str       -> StringUP str
+  PairUP x y         -> PairUP (removeCaseUP x) (removeCaseUP y)
+  AppUP x y          -> AppUP (removeCaseUP x) (removeCaseUP y)
+  LamUP str x        -> LamUP str (removeCaseUP x)
+  ChurchUP i         -> ChurchUP i
+  UnsizedRecursionUP -> UnsizedRecursionUP
+  LeftUP x           -> LeftUP (removeCaseUP x)
+  RightUP x          -> RightUP (removeCaseUP x)
+  TraceUP x          -> TraceUP (removeCaseUP x)
+  CheckUP x y        -> CheckUP (removeCaseUP x) (removeCaseUP y)
+
+caseup2iteup :: UnprocessedParsedTerm
+             -> [(UnprocessedParsedTerm, UnprocessedParsedTerm)]
+             -> UnprocessedParsedTermSansCase
+caseup2iteup ptrn cases = undefined
 
 optimizeBuiltinFunctions :: UnprocessedParsedTerm -> UnprocessedParsedTerm
 optimizeBuiltinFunctions = transform optimize where
