@@ -45,7 +45,7 @@ data IExpr
   | PRight !IExpr            -- right
   | Trace
   deriving (Eq, Show, Ord)
-makeBaseFunctor ''IExpr -- * Functorial version IExprF.
+makeBaseFunctor ''IExpr -- Functorial version IExprF.
 
 instance Plated IExpr where
   plate f = \case
