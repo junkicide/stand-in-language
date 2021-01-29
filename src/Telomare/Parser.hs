@@ -61,6 +61,8 @@ data BaseUnprocessedParsedTerm a
   deriving (Eq, Ord, Show)
 makeBaseFunctor ''BaseUnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
 
+-- makePrisms ''BaseUnprocessedParsedTerm
+
 type UnprocessedParsedTerm = BaseUnprocessedParsedTerm ()
 type UnprocessedParsedTermSansCase = BaseUnprocessedParsedTerm Void
 pattern CaseUP ptrn cases = CaseUP' () ptrn cases
@@ -425,8 +427,8 @@ parseLet = do
   pure $ LetUP bindingsList expr
 
 -- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings.
-extractBindingsList :: (UnprocessedParsedTerm -> UnprocessedParsedTerm)
-                    -> [(String, UnprocessedParsedTerm)]
+extractBindingsList :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a)
+                    -> [(String, BaseUnprocessedParsedTerm a)]
 extractBindingsList bindings = case bindings $ IntUP 0 of
               LetUP b x -> b
               _ -> error $ unlines [ "`bindings` should be an unapplied LetUP UnprocessedParsedTerm."
@@ -538,9 +540,9 @@ vars = cata alg where
 
 -- |`makeLambda ps vl t1` makes a `TLam` around `t1` with `vl` as arguments.
 -- Automatic recognition of Close or Open type of `TLam`.
-makeLambda :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -- ^Bindings
-           -> String                                           -- ^Variable name
-           -> Term1                                            -- ^Lambda body
+makeLambda :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a) -- ^Bindings
+           -> String                                                       -- ^Variable name
+           -> Term1                                                        -- ^Lambda body
            -> Term1
 makeLambda bindings str term1 =
   case unbound == Set.empty of
@@ -550,9 +552,11 @@ makeLambda bindings str term1 =
         v = vars term1
         unbound = ((v \\ bindings') \\ Set.singleton str)
 
-validateVariables :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> UnprocessedParsedTerm -> Either String Term1
+validateVariables :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a)
+                  -> BaseUnprocessedParsedTerm b
+                  -> Either String Term1
 validateVariables bindings term =
-  let validateWithEnvironment :: UnprocessedParsedTerm
+  let validateWithEnvironment :: (BaseUnprocessedParsedTerm b)
                               -> State.StateT (Map String Term1) (Either String) Term1
       validateWithEnvironment = \case
         -- CaseUP p cases -> do
@@ -567,7 +571,6 @@ validateVariables bindings term =
           case Map.lookup n definitionsMap of
             Just v -> pure v
             _      -> State.lift . Left  $ "No definition found for " <> n
-        --TODO add in Daniel's code
         LetUP bindingsMap inner -> do
           oldBindings <- State.get
           let addBinding (k,v) = do
@@ -595,13 +598,93 @@ validateVariables bindings term =
         CheckUP cf x -> TCheck <$> validateWithEnvironment cf <*> validateWithEnvironment x
   in State.evalStateT (validateWithEnvironment term) Map.empty
 
+generateCondition :: BaseUnprocessedParsedTerm a -- * match
+                  -> BaseUnprocessedParsedTerm b -- * i corresponding to the ITE of this match
+generateCondition upt = State.evalState (step upt) id
+  where step :: (BaseUnprocessedParsedTerm a)
+             -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
+        step = \case
+          VarUP _ -> pure uptTrue
+          IntUP i -> do
+            f <- State.get
+            pure $ isLeafInt f i
+
+          ListUP [] -> undefined
+          ListUP (x:xs) -> do
+            f <- State.get
+            State.put (LeftUP . f)
+            x' <- step x
+            State.put (RightUP . f)
+            xs' <- sequence $ step <$> xs
+            pure $ isLeafList f (x':xs')
+          PairUP a b -> do
+            f <- State.get
+            State.put (LeftUP . f)
+            a' <- step a
+            State.put (RightUP . f)
+            b' <- step b
+            pure $ pairWrapper f a' b'
+          _ -> error "Pattern matching currently only allowed for Pair and Zero."
+        uptTrue = IntUP 1
+        uptFalse = IntUP 0
+
+        isLeafList = \f lst -> AppUP (AppUP (VarUP "listEqual") (f $ VarUP "patternn")) (ListUP lst)
+
+        isLeafInt = \f i -> AppUP (AppUP (VarUP "dEqual") (f $ VarUP "patternn")) (IntUP i)
+        pairWrapper = \f x y -> ITEUP
+                                  (f $ VarUP "patternn")
+                                  (ITEUP
+                                    x
+                                    (ITEUP
+                                      y
+                                      uptTrue
+                                      uptFalse)
+                                    uptFalse)
+                                  uptFalse
+
+generateMatchBindings :: BaseUnprocessedParsedTerm a
+                      -> [(String, BaseUnprocessedParsedTerm b)]
+generateMatchBindings upt = State.evalState (step upt) id
+  where
+    step :: (BaseUnprocessedParsedTerm a)
+         -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
+    step = \case
+      VarUP str -> do
+        f <- State.get
+        pure [(str, f $ VarUP "patternn")]
+      PairUP a b -> do
+        f <- State.get
+        State.put (LeftUP . f)
+        a' <- step a
+        State.put (RightUP . f)
+        b' <- step b
+        pure $ a' <> b'
+      ListUP (x:xs) -> do
+        f <- State.get
+        State.put (LeftUP . f)
+        x' :: [(String, BaseUnprocessedParsedTerm b)] <- step x
+        State.put (RightUP . f)
+        xs' :: [[(String, BaseUnprocessedParsedTerm b)]] <- sequence $ (step <$> xs)
+        pure $ x' <> (concat xs')
+      _ -> pure []
+
+removeSingleMatchCaseUP :: (UnprocessedParsedTerm, UnprocessedParsedTerm)
+                        -> (UnprocessedParsedTermSansCase -> UnprocessedParsedTermSansCase)
+removeSingleMatchCaseUP (match, matchOut) = \uptsc ->
+  ITEUP
+    (generateCondition match)
+    (LetUP (generateMatchBindings match) (removeCaseUP matchOut))
+    uptsc
+
 removeCaseUP :: UnprocessedParsedTerm -> UnprocessedParsedTermSansCase
 removeCaseUP = \case
-  CaseUP ptrn cases  -> caseup2iteup ptrn cases
+  CaseUP patternn lstMatches -> LetUP [("patternn", removeCaseUP patternn)] $
+    (foldr (\x f -> removeSingleMatchCaseUP x . f) id lstMatches)
+      (CheckUP (LamUP "x" (StringUP "match failure")) (IntUP 0)) -- Error case when all matches have failed.
   VarUP str          -> VarUP str
   ITEUP x y z        -> ITEUP (removeCaseUP x) (removeCaseUP y) (removeCaseUP z)
-  LetUP xs y         -> LetUP ((fmap removeCaseUP) <$> xs) (removeCaseUP y)
-  ListUP xs          -> ListUP (removeCaseUP <$> xs)
+  LetUP lst x        -> LetUP ((fmap . fmap) removeCaseUP lst) (removeCaseUP x)
+  ListUP lst         -> ListUP (removeCaseUP <$> lst)
   IntUP i            -> IntUP i
   StringUP str       -> StringUP str
   PairUP x y         -> PairUP (removeCaseUP x) (removeCaseUP y)
@@ -613,11 +696,6 @@ removeCaseUP = \case
   RightUP x          -> RightUP (removeCaseUP x)
   TraceUP x          -> TraceUP (removeCaseUP x)
   CheckUP x y        -> CheckUP (removeCaseUP x) (removeCaseUP y)
-
-caseup2iteup :: UnprocessedParsedTerm
-             -> [(UnprocessedParsedTerm, UnprocessedParsedTerm)]
-             -> UnprocessedParsedTermSansCase
-caseup2iteup ptrn cases = undefined
 
 optimizeBuiltinFunctions :: UnprocessedParsedTerm -> UnprocessedParsedTerm
 optimizeBuiltinFunctions = transform optimize where
@@ -639,9 +717,44 @@ optimizeBuiltinFunctions = transform optimize where
     x -> x
 
 -- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
-process :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> UnprocessedParsedTerm -> Either String Term3
-process bindings = fmap splitExpr . (>>= debruijinize []) . validateVariables bindings . optimizeBuiltinFunctions
+process :: (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+        -> UnprocessedParsedTerm
+        -> Either String Term3
+process bindings = fmap splitExpr
+                   . (>>= debruijinize [])
+                   . validateVariables bindings
+                   . removeCaseUP
+                   . optimizeBuiltinFunctions
 
 -- |Parse main.
 parseMain :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> String -> Either String Term3
 parseMain prelude s = parseWithPrelude prelude s >>= process prelude
+
+-- ITEUP
+--   (VarUP "patternn")
+--   (ITEUP
+--     (AppUP (VarUP "not") (LeftUP (VarUP "patternn")))
+--     (ITEUP
+--       (AppUP (VarUP "not") (RightUP (VarUP "patternn")))
+--       (IntUP 1)
+--       (IntUP 0))
+--     (IntUP 0))
+--   (IntUP 0)
+-- ITEUP
+--   (VarUP "patternn")
+--   (ITEUP
+--     (AppUP
+--       (AppUP
+--         (VarUP "dEqual")
+--         (LeftUP (VarUP "patternn")))
+--       (IntUP 0))
+--     (ITEUP
+--       (AppUP
+--         (AppUP
+--           (VarUP "dEqual")
+--           (RightUP (VarUP "patternn")))
+--         (IntUP 0))
+--       (IntUP 1)
+--       (IntUP 0))
+--     (IntUP 0))
+--   (IntUP 0)

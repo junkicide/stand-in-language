@@ -145,10 +145,6 @@ iEval f env g = let f' = f env in case g of
   PRight g -> f' g >>= \case
     (Pair _ x) -> pure x
     _ -> pure Zero
-  Trace -> pure $ trace (show env) env
-  Zero -> pure Zero
-  Gate a b -> pure $ Gate a b
-  Defer x -> pure $ Defer x
 
 instance TelomareLike IExpr where
   fromTelomare = id

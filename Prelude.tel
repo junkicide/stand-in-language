@@ -10,6 +10,7 @@ d2cG = \r -> let layer = \recur i f b -> if i
                                             then f (recur (left i) f b)
                                             else b
              in r layer (\i f b -> b)
+
 d2c = d2cG ?
 
 c2d = \c -> c succ 0
@@ -57,6 +58,7 @@ zipWith = zipWithG ?
 
 filter = \f -> foldr (\a b -> if f a then (a, b) else b) 0 
 
+-- Natural numbers compare function
 dEqual = \a b -> let equalsOne = \x -> if x then (not (left x)) else 0
                  in if a then equalsOne (d2c (left a) (\x -> left x) b)
                          else not b

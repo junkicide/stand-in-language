@@ -1,0 +1,64 @@
+-- File for small illustrative telomare programs
+
+-- Simplest Hello World program.
+-- main = \input -> ("Hello, World!", 0)
+
+-- Program to echo your input.
+-- main = \input -> if input
+--                     then (left input, 0)
+--                     else ("enter input",1)
+
+-- Program to echo your input using case statement.
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> (a, 0)
+
+-- Program to measure the legnth of your input up to length 3.
+-- TODO: If parenthesis inside of case pattern are removed, it gives a parse error. Fix.
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> case (listLength a) of
+--                                0 -> ("length 0", 0)
+--                                1 -> ("length 1", 0)
+--                                2 -> ("length 2", 0)
+--                                3 -> ("length 3", 0)
+
+-- TODO: make this a unit test
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myFun = \x -> (0,(0,(x,0)))
+--                              in case (myFun (listLength a)) of
+--                                   (0,(0,(0,0))) -> ("length 0", 0)
+--                                   (0,(0,(1,0))) -> ("length 1", 0)
+--                                   (0,(0,(2,0))) -> ("length 2", 0)
+--                                   (0,(0,(3,0))) -> ("length 3", 0)
+
+-- TODO: make this a unit test
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myFun = \x -> (a,(b,(x,0)))
+--                              in case (myFun (listLength a)) of
+--                                   (a,(b,(0,0))) -> ("length 0", 0)
+--                                   (a,(b,(1,0))) -> (a, 0)
+--                                   (a,(b,(2,0))) -> (b, 0)
+--                                   (a,(b,(3,0))) -> ("length 3", 0)
+
+-- TODO: make this a unit test
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myFun = \x -> (a,((104,(104,(101,(102,(101,(115,(116,112))))))),(x,0)))
+--                              in case (myFun (listLength a)) of
+--                                   (a,(b,(0,0))) -> ("length 0", 0)
+--                                   (a,(b,(1,0))) -> (a, 0)
+--                                   (a,(b,(2,0))) -> (b, 1)
+--                                   (a,(b,(3,0))) -> ("length 3", 0)
+
+-- TODO: make this a unit test
+main = \input -> case input of
+                   0 -> ("enter input", 1)
+                   (a, b) -> let myFun = "hola"
+                             in case myFun of
+                                  (a,(b,(0,0))) -> ("length 0", 0)
+                                  (a,(b,(1,0))) -> (a, 0)
+                                  -- "hola" -> ("hhhefesto", 1)
+                                  (a,(b,(3,0))) -> ("length 3", 0)

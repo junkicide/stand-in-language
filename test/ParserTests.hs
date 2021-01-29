@@ -229,9 +229,6 @@ unitTests = testGroup "Unit tests"
   --       Left err -> assertFailure . show $ err
   ]
 
-
-
-
 basicCaseExamples = unlines $
   [ "case input of"
   , "  (a, (b, c)) -> foo a b c"
@@ -257,6 +254,14 @@ basicCaseExamples'' = unlines $
   , "                   [a, b, c] -> foo a b c"
   , "                   2 -> bar"
   , "                   [(a,b), c, 2] -> foo a b c"
+  ]
+
+basicCaseExamples''' = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> 0"
+  , "                   (0,0) -> 0"
+  , "                   (0, (0,0)) -> 0"
+  , "                   (0, (x,0)) -> 0"
   ]
 
 
