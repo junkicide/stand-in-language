@@ -1,19 +1,19 @@
-{-# LANGUAGE DeriveFoldable       #-}
-{-# LANGUAGE DeriveFunctor        #-}
-{-# LANGUAGE DeriveTraversable    #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE TupleSections        #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 
 module Common where
-
-import           Test.QuickCheck
-import           Test.QuickCheck.Gen
 
 import           Telomare
 import           Telomare.Parser
 import           Telomare.TypeChecker
+import           Test.QuickCheck
+import           Test.QuickCheck.Gen
 
 class TestableIExpr a where
   getIExpr :: a -> IExpr
@@ -205,6 +205,7 @@ instance Arbitrary UnprocessedParsedTerm where
           , (IntUP <$> elements [0..9])
           , (ChurchUP <$> elements [0..9])
           , (pure UnsizedRecursionUP)
+          , (pure UniqueUP)
           ]
     lambdaTerms = ["w", "x", "y", "z"]
     letTerms = map (("l" <>) . show) [1..255]
@@ -213,6 +214,7 @@ instance Arbitrary UnprocessedParsedTerm where
       , (3, pure . cycle $ lambdaTerms <> letTerms)
       , (1, cycle <$> shuffle (lambdaTerms <> letTerms))
       ]
+    genTree :: [String] -> Int -> Gen UnprocessedParsedTerm
     genTree varList i = let half = div i 2
                             third = div i 3
                             recur = genTree varList
@@ -247,6 +249,7 @@ instance Arbitrary UnprocessedParsedTerm where
                                    , AppUP <$> recur half <*> recur half
                                    ]
   shrink = \case
+    UniqueUP -> []
     StringUP s -> case s of
       [] -> []
       _  -> pure . StringUP $ tail s

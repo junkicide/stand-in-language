@@ -92,3 +92,14 @@ main = \input -> case input of
                                   (a,(0,(1,0))) -> (a, 0)
                                   ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
                                   x             -> ("default case", 0)
+
+-- Simple example of ad-hoc user defined types
+-- MyInt = let intTag = unique
+--         in ( \i -> if not i
+--                    then "MyInt must not be 0"
+--                    else (intTag, i)
+--            , \i -> if dEqual (left i) intTag
+--                    then 0
+--                    else "expecting MyInt"
+--            )
+-- main = \i -> ((left MyInt) 8, 0)
