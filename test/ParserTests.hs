@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+
 module Main where
 
 import           Common
@@ -43,7 +45,13 @@ tests = testGroup "Tests" [unitTests]
 
 unitTests :: TestTree
 unitTests = testGroup "Unit tests"
-  [ testCase "implement pattern matching in parser #49 basic examples" $ do
+  [ testCase "caseFullRunList" $ do
+      res <- sequence $ myMain <$> caseFullRunList
+      (and res) `compare` True @?= EQ
+  , testCase "implement pattern matching in parser #49 basic examples 2" $ do
+      res <- parseSuccessful (parseTopLevel <* eof) basicCaseExample''''
+      res `compare` True @?= EQ
+  , testCase "implement pattern matching in parser #49 basic examples" $ do
       res <- parseSuccessful (parseCase <* eof) basicCaseExamples
       res `compare` True @?= EQ
   , testCase "parseTopLevel with a case" $ do
@@ -229,14 +237,257 @@ unitTests = testGroup "Unit tests"
   --       Left err -> assertFailure . show $ err
   ]
 
+evalLoop' :: String -> String -> IExpr -> IO Bool
+evalLoop' input0 input1 iexpr = case eval' iexpr of
+  Left _ -> pure False
+  Right peExp ->
+    let mainLoop :: IExpr -> IO Bool
+        mainLoop s = do
+          result <- simpleEval (app peExp s)
+          case result of
+            Zero -> pure False
+            (Pair _ newState) ->
+              case newState of
+                Zero -> pure False
+                _ -> do
+                  inp <- s2g <$> (pure input0)
+                  let s' = Pair inp newState
+                  result' <- simpleEval (app peExp s')
+                  case result' of
+                    Zero -> pure False
+                    (Pair _ newState') ->
+                      case newState' of
+                        Zero -> pure False
+                        _ -> do
+                          inp <- s2g <$> (pure input1)
+                          pure True
+                          -- let s'' = Pair inp newState
+                          -- result <- simpleEval (app peExp s'')
+                          -- case result of
+                          --   Zero -> pure False
+                          --   (Pair disp newState) ->
+                          --     case newState of
+                          --       Zero -> pure False
+                          --       _ -> do
+                          --         inp <- s2g <$> (pure input2)
+                          --         pure True
+                          --   _ -> pure False
+                    _ -> pure False
+            _ -> pure False
+    in mainLoop Zero
+
+
+myMain :: String -> IO Bool
+myMain str = do
+  preludeFile <- Strict.readFile "Prelude.tel"
+  let
+    prelude = case parsePrelude preludeFile of
+      Right p -> p
+      Left pe -> error $ getErrorString pe
+    runMain :: String -> IO Bool
+    runMain s = case compile <$> parseMain prelude s of
+      Left e -> (putStrLn $ concat ["failed to parse ", s, " ", e]) >> pure False
+      Right (Right g) -> evalLoop' "00" "01" g
+      Right z -> (putStrLn $ "compilation failed somehow, with result " <> show z) >> pure False
+  runMain str
+
+
+caseFullRunList = [ caseFullRun0
+                  , caseFullRun1
+                  , caseFullRun2
+                  , caseFullRun3
+                  , caseFullRun4
+                  , caseFullRun5
+                  , caseFullRun6
+                  ]
+
+
+
+-- x =PairUP
+--   ListUP [IntUP 0, IntUP 1, PairUP (IntUP 0) (IntUP 1) ]
+--   IntUP 8
+
+-- pattern_x = PairUP
+--   ListUP [IntUP 0, IntUP 1, x ]
+--   IntUP 8
+
+-- wrapper :: UPTPattern -> UnprocessedParsedTerm
+
+-- wrapper = unlines $
+--   [ "main = \\input -> case input of"
+--   , "                   0 -> (\"enter input\", 1)"
+--   , "                   (a, b) -> let myFun = x"
+--   , "                             in case x of"
+--   , "                                  pattern_x -> (\"length 0\", 0)"
+--   , "                                  y -> (\"We failed\", 0)"
+--   ]
+
+uptPatternDepth :: UPTPattern UnprocessedParsedTerm -> Int
+uptPatternDepth (UPTPattern upt) = uptPatternDepth' 0 upt
+  where
+    uptPatternDepth' :: Int -> UnprocessedParsedTerm -> Int
+    uptPatternDepth' i = \case
+      PairUP x y -> max (uptPatternDepth' (i + 1) x) (uptPatternDepth' (i + 1) y)
+      ListUP lst -> foldr max 0 ((uptPatternDepth' (i + 1)) <$> lst)
+      _ -> i + 1
+
+arbitraryPrune :: UPTPattern UnprocessedParsedTerm
+               -> Gen (UPTPattern UnprocessedParsedTerm, UPTPattern UnprocessedParsedTerm) -- *(upt part that was pruned, pruned upt)
+arbitraryPrune patternn =
+  let pruneWith :: [Int] -- *List of Int to choose the path to take down the UPT and then chop
+                -> UPTPattern UnprocessedParsedTerm
+                -> (UPTPattern UnprocessedParsedTerm, UPTPattern UnprocessedParsedTerm)
+      pruneWith [] uptpattern = (uptpattern, UPTPattern $ VarUP "someNameTHatShouldntCollide") -- Fix: make this elegant
+      pruneWith (x:xs) (UPTPattern upt) =
+        case upt of
+          PairUP a b ->
+            case (x >= 0) of
+              True  -> (\(UPTPattern y) -> UPTPattern $ PairUP a y) <$> pruneWith xs (UPTPattern b)
+              False -> (\(UPTPattern y) -> UPTPattern $ PairUP y b) <$> pruneWith xs (UPTPattern a)
+          ListUP lst ->
+            let i = (mod x (length lst))
+                (firstPart, (elementToContinue:lastPart)) = splitAt i lst
+            in (\(UPTPattern y) -> UPTPattern . ListUP $ (firstPart <> [y] <> lastPart)) <$> pruneWith xs (UPTPattern elementToContinue)
+          _ -> (UPTPattern upt, UPTPattern $ VarUP "someNameTHatShouldntCollide")
+  in do let i :: Gen Int
+            i = arbitrary
+            is = listOf i
+        l <- length <$> is
+        lst :: [Int] <- take (l `mod` uptPatternDepth patternn) <$> is
+        -- trace (show lst) $ pure $ pruneWith lst patternn
+        pure $ pruneWith lst patternn
+
+
+
+wrapper patternn caseMatch caseMatchOut =
+  LetUP
+    [("main", LamUP "input"
+                (CaseUP' () (VarUP "input")
+                            [(IntUP 0,PairUP (StringUP "enter input") (IntUP 1))
+                            ,(PairUP (VarUP "a") (VarUP "b"), LetUP
+                                                                [("myFun",VarUP "x")]
+                                                                (CaseUP' ()
+                                                                  patternn
+                                                                  ((caseMatch, caseMatchOut ) : [(VarUP "y",PairUP (StringUP "We failed") (IntUP 0))
+                                                                  ])))
+                            ]))
+    ]
+    (LamUP "input" (CaseUP' () (VarUP "input") [(IntUP 0,PairUP (StringUP "enter input") (IntUP 1)),(PairUP (VarUP "a") (VarUP "b"),LetUP [("myFun",VarUP "x")] (CaseUP' () (VarUP "x") [(VarUP "pattern_x",PairUP (StringUP "length 0") (IntUP 0)),(VarUP "y",PairUP (StringUP "We failed") (IntUP 0))]))]))
+
+
+-- program to measure the legnth of your input up to length 3.
+caseFullRun0 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> case (listLength a) of"
+  , "                               0 -> (\"length 0\", 0)"
+  , "                               1 -> (\"length 1\", 0)"
+  , "                               2 -> (\"length 2\", 1)"
+  , "                               3 -> (\"length 3\", 0)"
+  ]
+
+caseFullRun1 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = \\x -> (0,(0,(x,0)))"
+  , "                             in case (myFun (listLength a)) of"
+  , "                                  (0,(0,(0,0))) -> (\"length 0\", 0)"
+  , "                                  (0,(0,(1,0))) -> (\"length 1\", 0)"
+  , "                                  (0,(0,(2,0))) -> (\"length 2\", 1)"
+  , "                                  (0,(0,(3,0))) -> (\"length 3\", 0)"
+  ]
+
+caseFullRun2 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = \\x -> (a,(b,(x,0)))"
+  , "                             in case (myFun (listLength a)) of"
+  , "                                  (a,(b,(0,0))) -> (\"length 0\", 0)"
+  , "                                  (a,(b,(1,0))) -> (a, 0)"
+  , "                                  (a,(b,(2,0))) -> (b, 1)"
+  , "                                  (a,(b,(3,0))) -> (\"length 3\", 0)"
+  ]
+
+caseFullRun3 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = \\x -> (a,((104,(104,(101,(102,(101,(115,(116,112))))))),(x,0)))"
+  , "                             in case (myFun (listLength a)) of"
+  , "                                  (a,(b,(0,0))) -> (\"length 0\", 0)"
+  , "                                  (a,(b,(1,0))) -> (a, 0)"
+  , "                                  (a,(b,(2,0))) -> (b, 1)"
+  , "                                  (a,(b,(3,0))) -> (\"length 3\", 0)"
+  ]
+
+caseFullRun4 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = ([[1,a],0,1,2],8)"
+  , "                             in case myFun of"
+  , "                                  (a,(0,(0,0)))     -> (\"length 0\", 0)"
+  , "                                  (a,(0,(1,0)))     -> (a, 0)"
+  , "                                  ([[1,a],0,1,2],8) -> (a, 1)"
+  , "                                  x                 -> (\"length 3\", 0)"
+  ]
+
+caseFullRun5 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = \"hhefesto\""
+  , "                             in case myFun of"
+  , "                                  (a,(0,(0,0))) -> (\"length 0\", 0)"
+  , "                                  (a,(0,(1,0))) -> (a, 0)"
+  , "                                  \"hhefesto\"    -> (a, 1)"
+  , "                                  x             -> (\"length 3\", 0)"
+  ]
+
+
+caseFullRun6 = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = [\"hhefesto0\", ([\"hhefesto\", 1, \"hhefesto2\"], 0)]"
+  , "                             in case myFun of"
+  , "                                  (a,(0,(0,0))) -> (\"length 0\", 0)"
+  , "                                  (a,(0,(1,0))) -> (a, 0)"
+  , "                                  [\"hhefesto0\", ([x, 1, \"hhefesto2\"], 0)] -> (x, 1)"
+  , "                                  x             -> (\"length 3\", 0)"
+  ]
+
+----------------------------------------------------
+
+listCaseExample = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> let myFun = [0,1,2,3,4]"
+  , "                             in case myFun of"
+  , "                                  (a,(b,(0,0))) -> (\"length 0\", 0)"
+  , "                                  (a,(b,(1,0))) -> (a, 0)"
+  , "                                  [0,1,2,3,4] -> (b, 1)"
+  , "                                  x -> (\"length 3\", 0)"
+  ]
+
 basicCaseExamples = unlines $
   [ "case input of"
   , "  (a, (b, c)) -> foo a b c"
   , "  \"string\" -> bar"
   , "  [a, b, c] -> foo a b c"
   , "  2 -> bar"
-  , "  [(a,b), c, 2] -> foo a b c"
+  , "  [(a,b), c, 2] -> case a of"
+  , "                     (a, (b, c)) -> foo a b c"
+  , "                     \"string\" -> bar"
+  , "                     [a, b, c] -> foo a b c"
+  , "                     2 -> bar"
+  , "                     [(a,b), c, 2] -> foo a b c"
   ]
+
+-- basicCaseExamples = unlines $
+--   [ "case input of"
+--   , "  (a, (b, c)) -> foo a b c"
+--   , "  \"string\" -> bar"
+--   , "  [a, b, c] -> foo a b c"
+--   , "  2 -> bar"
+--   , "  [(a,b), c, 2] -> foo a b c"
+--   ]
 
 basicCaseExamples' = unlines $
   [ "main = case input of"
@@ -252,16 +503,35 @@ basicCaseExamples'' = unlines $
   , "                   (a, (b, c)) -> foo a b c"
   , "                   \"string\" -> bar"
   , "                   [a, b, c] -> foo a b c"
+
+  -- , "                   baz 0 -> foo a b c"
+
   , "                   2 -> bar"
-  , "                   [(a,b), c, 2] -> foo a b c"
+  , "                   [(a,b), c, 2] -> case input of"
+  , "                                      (a, (b, c)) -> foo a b c"
+  , "                                      \"string\" -> bar"
+  , "                                      [a, b, c] -> foo a b c"
+  , "                                      2 -> bar"
+  , "                                      [(a,b), c, 2] -> foo a b c"
   ]
 
+-- missing test
 basicCaseExamples''' = unlines $
   [ "main = \\input -> case input of"
   , "                   0 -> 0"
   , "                   (0,0) -> 0"
   , "                   (0, (0,0)) -> 0"
   , "                   (0, (x,0)) -> 0"
+  ]
+
+basicCaseExample'''' = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   (a, b) -> case a of"
+  , "                               (a,(b,(0,0))) -> (\"length 0\", 0)"
+  , "                               (a,(b,(1,0))) -> (a, 0)"
+  , "                               [h,o,l,a] -> (\"hhhefesto\", 1)"
+  , "                               (a,(b,(3,0))) -> (\"length 3\", 0)"
   ]
 
 

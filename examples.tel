@@ -52,13 +52,43 @@
 --                                   (a,(b,(1,0))) -> (a, 0)
 --                                   (a,(b,(2,0))) -> (b, 1)
 --                                   (a,(b,(3,0))) -> ("length 3", 0)
+--                                   x             -> ("length must be less than 3", 0)
 
 -- TODO: make this a unit test
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myFun = ([[1,a],0,1,2],8)
+--                              in case myFun of
+--                                   (a,(0,(0,0)))     -> ("length 0", 0)
+--                                   (a,(0,(1,0)))     -> (a, 0)
+--                                   ([[1,a],0,1,2],8) -> (a, 1)
+--                                   x                 -> ("length 3", 0)
+
+-- TODO: make this a unit test
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myFun = "hhefesto"
+--                              in case myFun of
+--                                   (a,(0,(0,0))) -> ("length 0", 0)
+--                                   (a,(0,(1,0))) -> (a, 0)
+--                                   "hhefesto"    -> (a, 1)
+--                                   x             -> ("length 3", 0)
+
+-- TODO: make this a unit test
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myConst = ["hhefesto0", (["hhefesto", 1, "hhefesto2"], 0)]
+--                              in case myConst of
+--                                   (a,(0,(0,0))) -> ("length 0", 0)
+--                                   (a,(0,(1,0))) -> (a, 0)
+--                                   ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
+--                                   x             -> ("length 3", 0)
+
 main = \input -> case input of
                    0 -> ("enter input", 1)
-                   (a, b) -> let myFun = "hola"
-                             in case myFun of
-                                  (a,(b,(0,0))) -> ("length 0", 0)
-                                  (a,(b,(1,0))) -> (a, 0)
-                                  -- "hola" -> ("hhhefesto", 1)
-                                  (a,(b,(3,0))) -> ("length 3", 0)
+                   (a, b) -> let myConst = \x -> x
+                             in case myConst of
+                                  (a,(0,(0,0))) -> ("length 0", 0)
+                                  (a,(0,(1,0))) -> (a, 0)
+                                  ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
+                                  x             -> ("default case", 0)

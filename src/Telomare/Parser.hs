@@ -116,6 +116,18 @@ ints2t = foldr (\i t -> TPair (i2t i) t) TZero
 s2t :: String -> ParserTerm l v
 s2t = ints2t . map ord
 
+i2upt :: Int -> BaseUnprocessedParsedTerm a
+i2upt = ana coalg where
+  coalg :: Int -> Base (BaseUnprocessedParsedTerm a) Int
+  coalg 0 = IntUPF 0
+  coalg n = PairUPF (n-1) 0
+
+-- ints2upt :: [Int] -> BaseUnprocessedParsedTerm a
+-- ints2upt = foldr (\i t -> PairUP (i2upt i) t) (IntUP 0)
+
+s2intupList :: String ->  [BaseUnprocessedParsedTerm a]
+s2intupList = fmap i2upt . fmap ord
+
 -- |Int to Church encoding
 i2c :: Int -> Term1
 i2c x = TLam (Closed "f") (TLam (Open "x") (inner x))
@@ -605,28 +617,23 @@ generateCondition upt = State.evalState (step upt) id
              -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
         step = \case
           VarUP _ -> pure uptTrue
-          IntUP i -> do
-            f <- State.get
-            pure $ isLeafInt f i
-
-          ListUP [] -> undefined
-          ListUP (x:xs) -> do
-            f <- State.get
-            State.put (LeftUP . f)
-            x' <- step x
-            State.put (RightUP . f)
-            xs' <- sequence $ step <$> xs
-            pure $ isLeafList f (x':xs')
-          PairUP a b -> do
-            f <- State.get
-            State.put (LeftUP . f)
-            a' <- step a
-            State.put (RightUP . f)
-            b' <- step b
-            pure $ pairWrapper f a' b'
-          _ -> error "Pattern matching currently only allowed for Pair and Zero."
+          IntUP i -> doInt i
+          StringUP str -> foldr (\a b -> doPair (step a) b) (doInt 0) (s2intupList str)
+          ListUP lst -> foldr (\a b -> doPair (step a) b) (doInt 0) lst
+          PairUP a b -> doPair (step a) (step b)
+          x -> error "Pattern matching currently only allowed for Pair and Zero."
         uptTrue = IntUP 1
         uptFalse = IntUP 0
+        doInt :: Int -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
+        doInt i =  do
+          f <- State.get
+          pure $ isLeafInt f i
+        doPair :: State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
+               -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
+               -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
+        doPair a b = do
+          f <- State.get
+          pairWrapper f <$> (State.put (LeftUP . f) >> a) <*> (State.put (RightUP . f) >> b)
 
         isLeafList = \f lst -> AppUP (AppUP (VarUP "listEqual") (f $ VarUP "patternn")) (ListUP lst)
 
@@ -652,21 +659,15 @@ generateMatchBindings upt = State.evalState (step upt) id
       VarUP str -> do
         f <- State.get
         pure [(str, f $ VarUP "patternn")]
-      PairUP a b -> do
-        f <- State.get
-        State.put (LeftUP . f)
-        a' <- step a
-        State.put (RightUP . f)
-        b' <- step b
-        pure $ a' <> b'
-      ListUP (x:xs) -> do
-        f <- State.get
-        State.put (LeftUP . f)
-        x' :: [(String, BaseUnprocessedParsedTerm b)] <- step x
-        State.put (RightUP . f)
-        xs' :: [[(String, BaseUnprocessedParsedTerm b)]] <- sequence $ (step <$> xs)
-        pure $ x' <> (concat xs')
+      PairUP a b -> doPair (step a) (step b)
+      ListUP lst ->  foldr (\a b -> doPair (step a) b) (pure []) lst
       _ -> pure []
+    doPair ::  State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
+           -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
+           -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
+    doPair a b = do
+      f <- State.get
+      (<>) <$> (State.put (LeftUP . f) >> a) <*> (State.put (RightUP . f) >> b)
 
 removeSingleMatchCaseUP :: (UnprocessedParsedTerm, UnprocessedParsedTerm)
                         -> (UnprocessedParsedTermSansCase -> UnprocessedParsedTermSansCase)
