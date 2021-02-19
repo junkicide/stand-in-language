@@ -48,8 +48,20 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Tests" [unitTests, qcProps]
 
+-- myMain1 :: UnprocessedParsedTerm -> IO Bool
+
+-- \(UPTPattern upt) -> do
+--   (prunedPart, pruned) <- arbitraryPrune (UPTPattern upt)
+--   let upt2run = casePropertyCheckWrapper upt pruned
+--   myMain1 upt
+
 qcProps = testGroup "Property tests (QuickCheck)"
-  [ QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of UniqueUP's" $
+  [ QC.testProperty "Full run check of case expresions" $
+      \(UPTPattern upt) -> forAll (arbitraryPrune (UPTPattern upt)) $
+                              \(UPTPattern prunedPart, UPTPattern pruned) -> ioProperty $ do
+                                let upt2run = casePropertyCheckWrapper upt pruned
+                                myMain1 upt2run ,
+    QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of UniqueUP's" $
       \x ->
         containsUniqueUP x QC.==> checkAllUniques . generateAllUniques $ x
   , QC.testProperty "Have the total amount of UniqueUP + ListUP be equal to total ListUP after generateAllUniques" $
@@ -157,7 +169,7 @@ unitTests = testGroup "Unit tests"
       (res1 && res2) `compare` True @?= EQ
   , testCase "Ad hoc user defined types success" $ do
       res <- testUserDefAdHocTypes userDefAdHocTypesSuccess
-      res `compare` "\n\3372\a\ndone" @?= EQ
+      res `compare` "\n\4603\a\ndone" @?= EQ
   , testCase "Ad hoc user defined types failure" $ do
       res <- testUserDefAdHocTypes userDefAdHocTypesFailure
       res `compare` "\nMyInt must not be 0\ndone" @?= EQ
@@ -379,6 +391,27 @@ evalLoop' input0 input1 iexpr = case eval' iexpr of
             _ -> pure False
     in mainLoop Zero
 
+-- -- |Parse main.
+insertableParseMain :: (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+                    -> UnprocessedParsedTerm
+                    -> Either String Term3
+insertableParseMain prelude upt = (Right . prelude $ upt) >>= process prelude
+
+myMain1 :: UnprocessedParsedTerm -> IO Bool
+myMain1 upt = do
+  preludeFile <- Strict.readFile "Prelude.tel"
+  let
+    prelude = case parsePrelude preludeFile of
+      Right p -> p
+      Left pe -> error $ getErrorString pe
+    runMain :: UnprocessedParsedTerm -> IO Bool
+    runMain upt0 = case compile <$> insertableParseMain prelude upt0 of
+      Left e -> (putStrLn $ concat ["failed to parse ", show upt0, " ", e]) >> pure False
+      Right (Right g) -> evalLoop' "00" "01" g
+      Right z -> (putStrLn $ "compilation failed somehow, with result " <> show z) >> pure False
+  runMain upt
+
+
 myMain :: String -> IO Bool
 myMain str = do
   preludeFile <- Strict.readFile "Prelude.tel"
@@ -403,8 +436,6 @@ caseFullRunList = [ caseFullRun0
                   , caseFullRun6
                   ]
 
-
-
 -- x =PairUP
 --   ListUP [IntUP 0, IntUP 1, PairUP (IntUP 0) (IntUP 1) ]
 --   IntUP 8
@@ -423,6 +454,7 @@ caseFullRunList = [ caseFullRun0
 --   , "                                  pattern_x -> (\"length 0\", 0)"
 --   , "                                  y -> (\"We failed\", 0)"
 --   ]
+
 
 uptPatternDepth :: UPTPattern UnprocessedParsedTerm -> Int
 uptPatternDepth (UPTPattern upt) = uptPatternDepth' 0 upt
@@ -447,34 +479,63 @@ arbitraryPrune patternn =
               True  -> (\(UPTPattern y) -> UPTPattern $ PairUP a y) <$> pruneWith xs (UPTPattern b)
               False -> (\(UPTPattern y) -> UPTPattern $ PairUP y b) <$> pruneWith xs (UPTPattern a)
           ListUP lst ->
-            let i = (mod x (length lst))
-                (firstPart, (elementToContinue:lastPart)) = splitAt i lst
-            in (\(UPTPattern y) -> UPTPattern . ListUP $ (firstPart <> [y] <> lastPart)) <$> pruneWith xs (UPTPattern elementToContinue)
+            case null lst of
+              True -> (UPTPattern upt, UPTPattern $ VarUP "someNameTHatShouldntCollide")
+              _    -> let i = (mod x (length lst))
+                          (firstPart, (elementToContinue:lastPart)) = splitAt i lst
+                      in (\(UPTPattern y) -> UPTPattern . ListUP $ (firstPart <> [y] <> lastPart)) <$> pruneWith xs (UPTPattern elementToContinue)
           _ -> (UPTPattern upt, UPTPattern $ VarUP "someNameTHatShouldntCollide")
   in do let i :: Gen Int
             i = arbitrary
             is = listOf i
         l <- length <$> is
-        lst :: [Int] <- take (l `mod` uptPatternDepth patternn) <$> is
+        lst :: [Int] <- case uptPatternDepth patternn == 0 of
+                          False -> take (l `mod` uptPatternDepth patternn) <$> is
+                          True -> pure []
         -- trace (show lst) $ pure $ pruneWith lst patternn
         pure $ pruneWith lst patternn
 
-
-
-wrapper patternn caseMatch caseMatchOut =
+casePropertyCheckWrapper patternn caseMatch =
   LetUP
-    [("main", LamUP "input"
-                (CaseUP' () (VarUP "input")
-                            [(IntUP 0,PairUP (StringUP "enter input") (IntUP 1))
-                            ,(PairUP (VarUP "a") (VarUP "b"), LetUP
-                                                                [("myFun",VarUP "x")]
-                                                                (CaseUP' ()
-                                                                  patternn
-                                                                  ((caseMatch, caseMatchOut ) : [(VarUP "y",PairUP (StringUP "We failed") (IntUP 0))
-                                                                  ])))
-                            ]))
-    ]
-    (LamUP "input" (CaseUP' () (VarUP "input") [(IntUP 0,PairUP (StringUP "enter input") (IntUP 1)),(PairUP (VarUP "a") (VarUP "b"),LetUP [("myFun",VarUP "x")] (CaseUP' () (VarUP "x") [(VarUP "pattern_x",PairUP (StringUP "length 0") (IntUP 0)),(VarUP "y",PairUP (StringUP "We failed") (IntUP 0))]))]))
+    [] $
+    LamUP "input" $
+      CaseUP' ()
+        (VarUP "input")
+        [ (IntUP 0, PairUP (StringUP "enter input") (IntUP 1))
+        , (VarUP "x", CaseUP' ()
+                        patternn
+                        [ (caseMatch, PairUP (StringUP "Success path.") (IntUP 1))
+                        , (VarUP "y", PairUP (StringUP "Test failed.") (IntUP 0))
+                        ])
+        ]
+
+casePropertyCheckWrapper' patternn caseMatch =
+  LetUP
+    [("main",LamUP "input" (CaseUP' () (VarUP "input") [(IntUP 0,PairUP (StringUP "enter input") (IntUP 1)),(VarUP "x",CaseUP' () (VarUP "patternn") [(VarUP "caseMatch",PairUP (StringUP "Success path.") (IntUP 1)),(VarUP "y",PairUP (StringUP "Test failed.") (IntUP 0))])]))]
+    (LamUP "input"
+      (CaseUP' ()
+        (VarUP "input")
+        [ (IntUP 0, PairUP (StringUP "enter input") (IntUP 1))
+        , (VarUP "x",CaseUP' () (VarUP "patternn") [(VarUP "caseMatch",PairUP (StringUP "Success path.") (IntUP 1)),(VarUP "y",PairUP (StringUP "Test failed.") (IntUP 0))])
+        ]))
+
+-- |Used to generate `casePropertyCheckWrapper`
+casePropertyCheckWrapperString = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   x -> case patternn of"
+  , "                          caseMatch -> (\"Success path.\", 1)"
+  , "                          y         -> (\"Test failed.\", 0)"
+  ]
+
+-- |`casePropertyCheckWrapperString` runnable with myMain
+casePropertyCheckWrapperStringForMyMain = unlines $
+  [ "main = \\input -> case input of"
+  , "                   0 -> (\"enter input\", 1)"
+  , "                   x -> case (0) of"
+  , "                          someNameTHatShouldntCollide -> (\"Success path.\", 1)"
+  , "                          y         -> (\"Test failed.\", 0)"
+  ]
 
 
 -- program to measure the legnth of your input up to length 3.

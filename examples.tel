@@ -103,3 +103,10 @@ main = \input -> case input of
 --                    else "expecting MyInt"
 --            )
 -- main = \i -> ((left MyInt) 8, 0)
+
+
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    x -> case patternn of
+--                           case0 -> ("Success path.", 1)
+--                           x             -> ("Test failed.", 0)

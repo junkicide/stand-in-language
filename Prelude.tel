@@ -63,6 +63,15 @@ dEqual = \a b -> let equalsOne = \x -> if x then (not (left x)) else 0
                  in if a then equalsOne (d2c (left a) (\x -> left x) b)
                          else not b
 
+-- Should be able to compare any structure other than funtions
+compare = let base = \a b -> 0
+              layer = \recur a b -> let recurCompare = and (recur (left a) (left b))
+                                                           (recur (right a) (right b))
+                                    in if (dEqual a 0)
+                                       then (if (dEqual b 0) then 1 else 0)
+                                       else (if (dEqual b 0) then 0 else recurCompare)
+          in ? layer base
+
 listLength = foldr (\a b -> succ b) 0
 
 listEqual = \a b -> let pairsEqual = zipWith dEqual a b

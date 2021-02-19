@@ -186,6 +186,7 @@ instance Arbitrary (UPTPattern UnprocessedParsedTerm) where
     LamUP v x -> x : map (LamUP v) (shrink x)
     ITEUP i t e -> i : t : e : [ITEUP ni nt ne | (ni, nt, ne) <- shrink (i,t,e)]
     ListUP l -> case l of
+      [] -> [IntUP 1]
       [e] -> if null $ shrink e then [e] else e : map (ListUP . pure) (shrink e)
       _ -> head l : ListUP (tail l) : map (ListUP . shrink) l
     LetUP l i -> i : case l of -- TODO make this do proper, full enumeration
