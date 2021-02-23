@@ -46,7 +46,8 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [unitTests, qcProps]
+-- tests = testGroup "Tests" [unitTests, qcProps]
+tests = testGroup "Tests" [qcProps]
 
 -- myMain1 :: UnprocessedParsedTerm -> IO Bool
 
@@ -55,21 +56,32 @@ tests = testGroup "Tests" [unitTests, qcProps]
 --   let upt2run = casePropertyCheckWrapper upt pruned
 --   myMain1 upt
 
+-- forAll :: (Show a, Testable prop) => Gen a -> (a -> prop) -> Property
+
+justOne :: (Show a, Testable prop) => Gen a -> (a -> prop) -> Property
+justOne gen f = property $ f <$> gen
+
 qcProps = testGroup "Property tests (QuickCheck)"
-  [ QC.testProperty "Full run check of case expresions" $
+  [ QC.testProperty "Full run check of case expresions" $ withMaxSuccess 20 $
       \(UPTPattern upt) -> forAll (arbitraryPrune (UPTPattern upt)) $
                               \(UPTPattern prunedPart, UPTPattern pruned) -> ioProperty $ do
                                 let upt2run = casePropertyCheckWrapper upt pruned
-                                myMain1 upt2run ,
-    QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of UniqueUP's" $
-      \x ->
-        containsUniqueUP x QC.==> checkAllUniques . generateAllUniques $ x
-  , QC.testProperty "Have the total amount of UniqueUP + ListUP be equal to total ListUP after generateAllUniques" $
-      \x ->
-        containsUniqueUP x QC.==> checkNumberOfUniques x
-  , QC.testProperty "See that generateAllUniques only changes UniqueUP to ListUP" $
-      \x ->
-        containsUniqueUP x QC.==> onlyUniqueUPAndIntUP x
+                                myMain1 upt2run --,
+  --   QC.testProperty "Full run check of case expresions" $
+  --     (arbitrary :: UPTPattern UnprocessedParsedTerm)
+  --                             -- \(UPTPattern prunedPart, UPTPattern pruned) -> ioProperty $ do
+  --                             --   let upt2run = casePropertyCheckWrapper upt pruned
+  --                             --   myMain1 upt2run
+  -- ,
+  --   QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of UniqueUP's" $
+  --     \x ->
+  --       containsUniqueUP x QC.==> checkAllUniques . generateAllUniques $ x
+  -- , QC.testProperty "Have the total amount of UniqueUP + ListUP be equal to total ListUP after generateAllUniques" $
+  --     \x ->
+  --       containsUniqueUP x QC.==> checkNumberOfUniques x
+  -- , QC.testProperty "See that generateAllUniques only changes UniqueUP to ListUP" $
+  --     \x ->
+  --       containsUniqueUP x QC.==> onlyUniqueUPAndIntUP x
   ]
 
 checkNumberOfUniques :: UnprocessedParsedTerm -> Bool
