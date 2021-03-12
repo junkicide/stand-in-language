@@ -28,7 +28,6 @@ import qualified Data.Foldable              as F
 import           Data.Functor.Foldable
 import           Data.Functor.Foldable.TH
 import           Data.List                  (delete, elem, elemIndex)
-import           Data.Map                   (Map)
 import           Data.Map                   (Map, fromList, toList)
 import qualified Data.Map                   as Map
 import           Data.Maybe                 (fromJust)
@@ -189,16 +188,16 @@ convertPT :: Int -> Term3 -> Term4
 convertPT n (Term3 termMap) =
   let changeTerm = \case
         AuxFrag UnsizedRecursion -> partialFixF n
-        ZeroFrag -> pure ZeroFrag
-        PairFrag a b -> PairFrag <$> changeTerm a <*> changeTerm b
-        EnvFrag -> pure EnvFrag
-        SetEnvFrag x -> SetEnvFrag <$> changeTerm x
-        DeferFrag fi -> pure $ DeferFrag fi
-        AbortFrag -> pure AbortFrag
-        GateFrag l r -> GateFrag <$> changeTerm l <*> changeTerm r
-        LeftFrag x -> LeftFrag <$> changeTerm x
-        RightFrag x -> RightFrag <$> changeTerm x
-        TraceFrag -> pure TraceFrag
+        ZeroFrag                 -> pure ZeroFrag
+        PairFrag a b             -> PairFrag <$> changeTerm a <*> changeTerm b
+        EnvFrag                  -> pure EnvFrag
+        SetEnvFrag x             -> SetEnvFrag <$> changeTerm x
+        DeferFrag fi             -> pure $ DeferFrag fi
+        AbortFrag                -> pure AbortFrag
+        GateFrag l r             -> GateFrag <$> changeTerm l <*> changeTerm r
+        LeftFrag x               -> LeftFrag <$> changeTerm x
+        RightFrag x              -> RightFrag <$> changeTerm x
+        TraceFrag                -> pure TraceFrag
       mmap = traverse changeTerm termMap
       startKey = succ . fst $ Map.findMax termMap
       newMapBuilder = do
@@ -760,32 +759,3 @@ process bindings = fmap splitExpr
 -- |Parse main.
 parseMain :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> String -> Either String Term3
 parseMain prelude s = parseWithPrelude prelude s >>= process prelude
-
--- ITEUP
---   (VarUP "patternn")
---   (ITEUP
---     (AppUP (VarUP "not") (LeftUP (VarUP "patternn")))
---     (ITEUP
---       (AppUP (VarUP "not") (RightUP (VarUP "patternn")))
---       (IntUP 1)
---       (IntUP 0))
---     (IntUP 0))
---   (IntUP 0)
--- ITEUP
---   (VarUP "patternn")
---   (ITEUP
---     (AppUP
---       (AppUP
---         (VarUP "dEqual")
---         (LeftUP (VarUP "patternn")))
---       (IntUP 0))
---     (ITEUP
---       (AppUP
---         (AppUP
---           (VarUP "dEqual")
---           (RightUP (VarUP "patternn")))
---         (IntUP 0))
---       (IntUP 1)
---       (IntUP 0))
---     (IntUP 0))
---   (IntUP 0)
