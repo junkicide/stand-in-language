@@ -310,9 +310,15 @@ parseITE = do
   elseExpr <- parseLongExpr <* scn
   pure $ ITEUP cond thenExpr elseExpr
 
+parseUnique :: TelomareParser UnprocessedParsedTerm
+parseUnique = do
+  reserved "unique" <* scn
+  pure UniqueUP
+
 -- |Parse a single expression.
 parseSingleExpr :: TelomareParser UnprocessedParsedTerm
-parseSingleExpr = choice $ try <$> [ parseString
+parseSingleExpr = choice $ try <$> [ parseUnique
+                                   , parseString
                                    , parseNumber
                                    , parsePair
                                    , parseList
@@ -350,52 +356,6 @@ parsePatternAndCase = do
   symbol "->" <* scn
   caseOfPattern <- parseLongExpr <* scn
   pure (pattern', caseOfPattern)
-
--- -- |Parse case into ITE structure
--- parseCase :: TelomareParser UnprocessedParsedTerm
--- parseCase = do
---   symbol "case" <* sc
---   patternMatched <- parseSingleExpr
---   symbol "of" <* scn
---   lvl <- L.indentLevel
---   -- TODO: case `patternMatched` for ad hoc user defined types here
---   parseIExprCases lvl patternMatched
-
--- -- |Zero and Pair case pattern matching.
--- parseIExprCases :: Pos                   -- ^Indentation level of both cases.
---                 -> UnprocessedParsedTerm -- ^Cased term.
---                 -> TelomareParser UnprocessedParsedTerm
--- parseIExprCases lvl upt =
---   let psl = parseSameLvl lvl
---       partialCasePattern = fail $ "Partial function at IExpr pattern match." <>
---                                   " You should match for both Pair and Zero"
---   in
---       ITEUP upt
---   <$> (psl (pairCaseParse (LeftUP upt) (RightUP upt)) <* scn <* psl zeroCaseParse
---    <|> psl zeroCaseParse *> scn *> psl (pairCaseParse (LeftUP upt) (RightUP upt))
---    <|> partialCasePattern)
---   <*> (psl (pairCaseParse (IntUP 0) (IntUP 0)) *> scn *> psl zeroCaseParse
---    <|> psl zeroCaseParse <* scn <* psl (pairCaseParse (IntUP 0) (IntUP 0))
---    <|> partialCasePattern)
-
--- ---------- Something wrong here! do I even need x, y?
--- -- |Parse pair pattern match.
--- pairCaseParse :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> TelomareParser UnprocessedParsedTerm
--- pairCaseParse x y = do
---   symbol "Pair" <* scn
---   a <- identifier <* scn
---   b <- identifier <* scn
---   symbol "->" <* scn
---   expr <- parseLongExpr <* scn
---   pure $ LamUP a . LamUP b $ expr
-
-
--- -- |Parse zero pattern match.
--- zeroCaseParse :: TelomareParser UnprocessedParsedTerm
--- zeroCaseParse = symbol "Zero" *> scn *> symbol "->" *> scn *> parseSingleExpr
-
--- parseLambda :: TelomareParser UnprocessedParsedTerm
--- parseLambda = parseSimpleLambda <|> parseCaseLambda
 
 -- |Parse lambda expression.
 parseLambda :: TelomareParser UnprocessedParsedTerm
@@ -533,7 +493,7 @@ addBuiltins = LetUP
   , ("trace", LamUP "x" (TraceUP (VarUP "x")))
   , ("pair", LamUP "x" (LamUP "y" (PairUP (VarUP "x") (VarUP "y"))))
   , ("app", LamUP "x" (LamUP "y" (AppUP (VarUP "x") (VarUP "y"))))
-  , ("unique", UniqueUP)
+  -- , ("unique", UniqueUP)
   ]
 
 -- |Parse prelude.
@@ -641,7 +601,9 @@ generateCondition upt = State.evalState (step upt) id
           f <- State.get
           pairWrapper f <$> (State.put (LeftUP . f) >> a) <*> (State.put (RightUP . f) >> b)
 
-        isLeafList = \f lst -> AppUP (AppUP (VarUP "listEqual") (f $ VarUP "patternn")) (ListUP lst)
+        isUniqueUP = \f i -> undefined
+
+        -- isLeafList = \f lst -> AppUP (AppUP (VarUP "listEqual") (f $ VarUP "patternn")) (ListUP lst)
 
         isLeafInt = \f i -> AppUP (AppUP (VarUP "dEqual") (f $ VarUP "patternn")) (IntUP i)
         pairWrapper = \f x y -> ITEUP
@@ -667,6 +629,7 @@ generateMatchBindings upt = State.evalState (step upt) id
         pure [(str, f $ VarUP "patternn")]
       PairUP a b -> doPair (step a) (step b)
       ListUP lst ->  foldr (\a b -> doPair (step a) b) (pure []) lst
+      -- Unique
       _ -> pure []
     doPair ::  State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
            -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
@@ -741,7 +704,8 @@ generateAllUniques upt = State.evalState (makeUnique upt) 0 where
         UniqueUP -> do
           State.modify (+1)
           i <- State.get
-          pure $ ListUP (ls <> [IntUP i])
+          pure $ ListUP ([StringUP "UniqueUP header: This StringUP is the header of all generated UniqueUPs. It identifies that this is a user defined data type"] <>
+                         ls <> [IntUP i])
         x -> pure x
 
 -- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
@@ -755,7 +719,19 @@ process bindings = fmap splitExpr
                    . optimizeBuiltinFunctions
                    . generateAllUniques
 
-
 -- |Parse main.
 parseMain :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> String -> Either String Term3
 parseMain prelude s = parseWithPrelude prelude s >>= process prelude
+
+
+-- LetUP [ ( "MyInt"
+--         , LetUP [ ("intTag"
+--                   , ListUP [IntUP 78,IntUP 100,IntUP 198,IntUP 145,IntUP 203,IntUP 195,IntUP 238,IntUP 35,IntUP 232,IntUP 79,IntUP 162,IntUP 71,IntUP 72,IntUP 64,IntUP 85,IntUP 147,IntUP 38,IntUP 140,IntUP 177,IntUP 14,IntUP 203,IntUP 239,IntUP 22,IntUP 131,IntUP 47,IntUP 182,IntUP 121,IntUP 115,IntUP 151,IntUP 38,IntUP 45,IntUP 223,IntUP 1]
+--                   )
+--                 ]
+--                 (PairUP (LamUP "i" (ITEUP (AppUP (VarUP "not") (VarUP "i")) (StringUP "MyInt must not be 0") (PairUP (VarUP "intTag") (VarUP "i")))) (LamUP "i" (ITEUP (AppUP (AppUP (VarUP "dEqual") (AppUP (VarUP "left") (VarUP "i"))) (VarUP "intTag")) (IntUP 0) (StringUP "expecting MyInt"))))
+--         )
+--       , ( "main"
+--         , LamUP "i" (PairUP (AppUP (AppUP (VarUP "left") (VarUP "MyInt")) (IntUP 8)) (IntUP 0))
+--         )
+--       ] (LamUP "i" (PairUP (AppUP (AppUP (VarUP "left") (VarUP "MyInt")) (IntUP 8)) (IntUP 0)))
