@@ -587,7 +587,8 @@ generateCondition upt = State.evalState (step upt) id
           StringUP str -> foldr (\a b -> doPair (step a) b) (doInt 0) (s2intupList str)
           ListUP lst -> foldr (\a b -> doPair (step a) b) (doInt 0) lst
           PairUP a b -> doPair (step a) (step b)
-          x -> error "Pattern matching currently only allowed for Pair and Zero."
+          -- AppUP a b -> undefined
+          x -> error "Pattern matching currently only allowed for Pair, Zero, Integers, Strings and Lists."
         uptTrue = IntUP 1
         uptFalse = IntUP 0
         doInt :: Int -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
@@ -601,7 +602,10 @@ generateCondition upt = State.evalState (step upt) id
           f <- State.get
           pairWrapper f <$> (State.put (LeftUP . f) >> a) <*> (State.put (RightUP . f) >> b)
 
-        isUniqueUP = \f i -> undefined
+        -- isUniqueUP :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a) -- * State acumulator
+        --            -> BaseUnprocessedParsedTerm a                                  -- * UPT with isUniqueUP
+        --            -> BaseUnprocessedParsedTerm a                                  -- * UPT without isUniqueUP
+        -- isUniqueUP f i = undefined
 
         -- isLeafList = \f lst -> AppUP (AppUP (VarUP "listEqual") (f $ VarUP "patternn")) (ListUP lst)
 
@@ -631,7 +635,7 @@ generateMatchBindings upt = State.evalState (step upt) id
       ListUP lst ->  foldr (\a b -> doPair (step a) b) (pure []) lst
       -- Unique
       _ -> pure []
-    doPair ::  State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
+    doPair :: State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
            -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
            -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) [(String, BaseUnprocessedParsedTerm b)]
     doPair a b = do
@@ -698,14 +702,15 @@ generateAllUniques upt = State.evalState (makeUnique upt) 0 where
   makeUnique :: UnprocessedParsedTerm -> State Int UnprocessedParsedTerm
   makeUnique upt = transformM interm upt
     where
-      ls = bs2IntUPList . uptHash $ upt
+      ls = drop 28 . bs2IntUPList . uptHash $ upt
       interm :: UnprocessedParsedTerm -> State Int UnprocessedParsedTerm
       interm = \case
         UniqueUP -> do
           State.modify (+1)
           i <- State.get
-          pure $ ListUP ([StringUP "UniqueUP header: This StringUP is the header of all generated UniqueUPs. It identifies that this is a user defined data type"] <>
-                         ls <> [IntUP i])
+          pure $ ListUP (ls <> [IntUP i])
+          -- pure $ ListUP ([StringUP "UniqueUP header: This StringUP is the header of all generated UniqueUPs. It identifies that this is a user defined data type"] <>
+          --                ls <> [IntUP i])
         x -> pure x
 
 -- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
