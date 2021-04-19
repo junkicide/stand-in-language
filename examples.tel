@@ -74,49 +74,39 @@
 --                                   "hhefesto"    -> (a, 1)
 --                                   x             -> ("length 3", 0)
 
-
+-- TODO: make this a unit test
 -- main = \input -> case input of
 --                    0 -> ("enter input", 1)
---                    (a, b) -> let myConst = \x -> x
+--                    (a, b) -> let myConst = ["hhefesto0", (["hhefesto", 1, "hhefesto2"], 0)]
 --                              in case myConst of
 --                                   (a,(0,(0,0))) -> ("length 0", 0)
 --                                   (a,(0,(1,0))) -> (a, 0)
 --                                   ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
---                                   x             -> ("default case", 0)
+--                                   x             -> ("length 3", 0)
 
--- Simple example of ad-hoc user defined types
-MyInt0 = let intTag = unique
-        in ( \i -> if not i
-                   then "MyInt must not be 0"
-                   else (intTag, i)
-           , \i -> if dEqual (left i) intTag
-                   then 0
-                   else "expecting MyInt"
-           )
-MyInt1 = let intTag = unique
-        in ( \i -> if not i
-                   then "MyInt must not be 0"
-                   else (intTag, i)
-           , \i -> if dEqual (left i) intTag
-                   then 0
-                   else "expecting MyInt"
-           )
 main = \input -> case input of
                    0 -> ("enter input", 1)
-                   (a, b) -> let myConst = (left MyInt0) 8
-                                 myConst1 = ([1,2,3],8)
-                             in case myConst1 of
+                   (a, b) -> let myConst = \x -> x
+                             in case myConst of
                                   (a,(0,(0,0))) -> ("length 0", 0)
                                   (a,(0,(1,0))) -> (a, 0)
-                                  ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 0)
-                                  ((left MyInt0) 8) -> ("Success!", 1)
-                                  -- ((\x -> x) ([1,2,3],8)) -> ("Success!", 1)
+                                  ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
                                   x             -> ("default case", 0)
 
+-- Simple example of ad-hoc user defined types
+-- MyInt = let intTag = unique
+--         in ( \i -> if not i
+--                    then "MyInt must not be 0"
+--                    else (intTag, i)
+--            , \i -> if dEqual (left i) intTag
+--                    then 0
+--                    else "expecting MyInt"
+--            )
+-- main = \i -> ((left MyInt) 8, 0)
 
 
 -- main = \input -> case input of
 --                    0 -> ("enter input", 1)
 --                    x -> case patternn of
 --                           case0 -> ("Success path.", 1)
---                           x     -> ("Test failed.", 0)
+--                           x             -> ("Test failed.", 0)

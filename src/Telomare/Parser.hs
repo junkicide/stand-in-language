@@ -403,15 +403,6 @@ parseLet = do
   expr <- parseLongExpr <* scn
   pure $ LetUP bindingsList expr
 
--- |Extracting list (bindings) from the wrapping `LetUP` used to keep track of bindings.
-extractBindingsList :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a)
-                    -> [(String, BaseUnprocessedParsedTerm a)]
-extractBindingsList bindings = case bindings $ IntUP 0 of
-              LetUP b x -> b
-              _ -> error $ unlines [ "`bindings` should be an unapplied LetUP UnprocessedParsedTerm."
-                                   , "Called from `extractBindingsList'`"
-                                   ]
-
 -- |Parse long expression.
 parseLongExpr :: TelomareParser UnprocessedParsedTerm
 parseLongExpr = choice $ try <$> [ parseLet
@@ -446,9 +437,15 @@ parseAssignment = do
 
 -- |Parse top level expressions.
 parseTopLevel :: TelomareParser UnprocessedParsedTerm
-parseTopLevel = do
+parseTopLevel = parseTopLevelWithPrelude []
+
+-- |Parse top level expressions.
+parseTopLevelWithPrelude :: [(String, UnprocessedParsedTerm)]    -- *Prelude
+                         -> TelomareParser UnprocessedParsedTerm
+parseTopLevelWithPrelude lst = do
   bindingList <- scn *> many parseAssignment <* eof
-  pure $ LetUP bindingList (fromJust $ lookup "main" bindingList)
+  pure $ LetUP (lst <> bindingList) (fromJust $ lookup "main" bindingList)
+
 
 parseDefinitions :: TelomareParser (UnprocessedParsedTerm -> UnprocessedParsedTerm)
 parseDefinitions = do
@@ -462,7 +459,6 @@ runTelomareParser_ parser str = show <$> runTelomareParser parser str >>= putStr
 -- |Helper function to debug parsers without a result.
 runTelomareParserWDebug :: Show a => TelomareParser a -> String -> IO ()
 runTelomareParserWDebug parser str = show <$> runTelomareParser (dbg "debug" parser) str >>= putStrLn
-
 
 -- |Helper function to test Telomare parsers with any result.
 runTelomareParser :: Monad m => TelomareParser a -> String -> m a
@@ -478,13 +474,6 @@ parseSuccessful parser str =
     Right _ -> pure True
     Left _  -> pure False
 
--- |Parse with specified prelude and g-> UnprocessedParsedTerm)
-parseWithPrelude :: (UnprocessedParsedTerm -> UnprocessedParsedTerm)
-                 -> String
-                 -> Either String UnprocessedParsedTerm
-parseWithPrelude prelude str = let result = prelude <$> runParser parseTopLevel "" str
-                               in first errorBundlePretty result
-
 addBuiltins :: UnprocessedParsedTerm -> UnprocessedParsedTerm
 addBuiltins = LetUP
   [ ("zero", IntUP 0)
@@ -493,14 +482,11 @@ addBuiltins = LetUP
   , ("trace", LamUP "x" (TraceUP (VarUP "x")))
   , ("pair", LamUP "x" (LamUP "y" (PairUP (VarUP "x") (VarUP "y"))))
   , ("app", LamUP "x" (LamUP "y" (AppUP (VarUP "x") (VarUP "y"))))
-  -- , ("unique", UniqueUP)
   ]
 
--- |Parse prelude.
-parsePrelude :: String -> Either ErrorString (UnprocessedParsedTerm -> UnprocessedParsedTerm)
-parsePrelude str = case runParser parseDefinitions "" str of
-  Right pd -> Right (addBuiltins . pd)
-  Left x   -> Left $ MkES $ errorBundlePretty x
+parsePrelude :: String -> Either String [(String, UnprocessedParsedTerm)]
+parsePrelude str = let result = runParser (scn *> many parseAssignment <* eof) "" str
+                    in first errorBundlePretty result
 
 -- |Collect all variable names in a `Term1` expresion excluding terms binded
 --  to lambda args
@@ -518,23 +504,23 @@ vars = cata alg where
 
 -- |`makeLambda ps vl t1` makes a `TLam` around `t1` with `vl` as arguments.
 -- Automatic recognition of Close or Open type of `TLam`.
-makeLambda :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a) -- ^Bindings
-           -> String                                                       -- ^Variable name
-           -> Term1                                                        -- ^Lambda body
+makeLambda :: [(String, UnprocessedParsedTerm)] -- ^Bindings
+           -> String                            -- ^Variable name
+           -> Term1                             -- ^Lambda body
            -> Term1
 makeLambda bindings str term1 =
   case unbound == Set.empty of
     True -> TLam (Closed str) term1
     _    -> TLam (Open str) term1
-  where bindings' = Set.fromList $ fst <$> extractBindingsList bindings
+  where bindings' = Set.fromList $ fst <$> bindings
         v = vars term1
         unbound = ((v \\ bindings') \\ Set.singleton str)
 
-validateVariables :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a)
-                  -> BaseUnprocessedParsedTerm b
+validateVariables :: [(String, UnprocessedParsedTerm)] -- * Prelude
+                  -> UnprocessedParsedTerm
                   -> Either String Term1
-validateVariables bindings term =
-  let validateWithEnvironment :: (BaseUnprocessedParsedTerm b)
+validateVariables prelude term =
+  let validateWithEnvironment :: UnprocessedParsedTerm
                               -> State.StateT (Map String Term1) (Either String) Term1
       validateWithEnvironment = \case
         -- CaseUP p cases -> do
@@ -543,20 +529,20 @@ validateVariables bindings term =
           State.modify (Map.insert v (TVar v))
           result <- validateWithEnvironment x
           State.put oldState
-          pure $ makeLambda bindings v result
+          pure $ makeLambda prelude v result
         VarUP n -> do
           definitionsMap <- State.get
           case Map.lookup n definitionsMap of
             Just v -> pure v
             _      -> State.lift . Left  $ "No definition found for " <> n
-        LetUP bindingsMap inner -> do
-          oldBindings <- State.get
+        LetUP preludeMap inner -> do
+          oldPrelude <- State.get
           let addBinding (k,v) = do
                 newTerm <- validateWithEnvironment v
                 State.modify (Map.insert k newTerm)
-          mapM_ addBinding bindingsMap
+          mapM_ addBinding preludeMap
           result <- validateWithEnvironment inner
-          State.put oldBindings
+          State.put oldPrelude
           pure result
         ITEUP i t e -> TITE <$> validateWithEnvironment i
                             <*> validateWithEnvironment t
@@ -714,18 +700,25 @@ generateAllUniques upt = State.evalState (makeUnique upt) 0 where
         x -> pure x
 
 -- |Process an `UnprocessedParesedTerm` to a `Term3` with failing capability.
-process :: (UnprocessedParsedTerm -> UnprocessedParsedTerm)
+process :: [(String, UnprocessedParsedTerm)] -- *Prelude
         -> UnprocessedParsedTerm
         -> Either String Term3
-process bindings = fmap splitExpr
-                   . (>>= debruijinize [])
-                   . validateVariables bindings
-                   . removeCaseUP
-                   . optimizeBuiltinFunctions
-                   . generateAllUniques
+process prelude = fmap splitExpr
+                . (>>= debruijinize [])
+                . validateVariables prelude
+                . optimizeBuiltinFunctions
+                . generateAllUniques
 
--- |Parse main.
-parseMain :: (UnprocessedParsedTerm -> UnprocessedParsedTerm) -> String -> Either String Term3
+-- |Parse with specified prelude
+parseWithPrelude :: [(String, UnprocessedParsedTerm)]   -- *Prelude
+                 -> String                              -- *Raw string to be parsed
+                 -> Either String UnprocessedParsedTerm -- *Error on Left
+-- parseWithPrelude prelude str = bimap errorBundlePretty (LetUP prelude) $ runParser parseTopLevel "" str
+parseWithPrelude prelude str = first errorBundlePretty $ runParser (parseTopLevelWithPrelude prelude) "" str
+
+parseMain :: [(String, UnprocessedParsedTerm)] -- *Prelude
+          -> String                            -- *Raw string to be parserd
+          -> Either String Term3               -- *Error on Left
 parseMain prelude s = parseWithPrelude prelude s >>= process prelude
 
 

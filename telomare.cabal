@@ -74,6 +74,7 @@ library
                      , utf8-string
   extra-libraries:     gc
                      , jumper
+
   -- uncomment this line to get a cabal repl. Use appropiate complete path.
   extra-lib-dirs:      /home/hhefesto/src/telomare/lib
 
