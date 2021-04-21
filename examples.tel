@@ -84,14 +84,14 @@
 --                                   ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
 --                                   x             -> ("length 3", 0)
 
-main = \input -> case input of
-                   0 -> ("enter input", 1)
-                   (a, b) -> let myConst = \x -> x
-                             in case myConst of
-                                  (a,(0,(0,0))) -> ("length 0", 0)
-                                  (a,(0,(1,0))) -> (a, 0)
-                                  ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
-                                  x             -> ("default case", 0)
+-- main = \input -> case input of
+--                    0 -> ("enter input", 1)
+--                    (a, b) -> let myConst = \x -> x
+--                              in case myConst of
+--                                   (a,(0,(0,0))) -> ("length 0", 0)
+--                                   (a,(0,(1,0))) -> (a, 0)
+--                                   ["hhefesto0", ([x, 1, "hhefesto2"], 0)] -> (x, 1)
+--                                   x             -> ("default case", 0)
 
 -- Simple example of ad-hoc user defined types
 -- MyInt = let intTag = unique
@@ -105,8 +105,19 @@ main = \input -> case input of
 -- main = \i -> ((left MyInt) 8, 0)
 
 
--- main = \input -> case input of
---                    0 -> ("enter input", 1)
---                    x -> case patternn of
---                           case0 -> ("Success path.", 1)
---                           x             -> ("Test failed.", 0)
+-- Simple example of ad-hoc user defined types
+MyInt = let intTag = unique
+        in ( \i -> if not i
+                   then "MyInt must not be 0"
+                   else (intTag, i)
+           , \i -> if dEqual (left i) intTag
+                   then 0
+                   else "expecting MyInt"
+           )
+
+main = \input -> case input of
+                   0 -> ("enter input", 1)
+                   x -> let myConst = (left MyInt) 8
+                        in case myConst of
+                             ((left MyInt) 8) -> ("Success path.", 1)
+                             y              -> ("Test failed.", 0)

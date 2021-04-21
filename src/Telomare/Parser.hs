@@ -504,7 +504,7 @@ vars = cata alg where
 
 -- |`makeLambda ps vl t1` makes a `TLam` around `t1` with `vl` as arguments.
 -- Automatic recognition of Close or Open type of `TLam`.
-makeLambda :: [(String, UnprocessedParsedTerm)] -- ^Bindings
+makeLambda :: [(String, BaseUnprocessedParsedTerm a)] -- ^Bindings
            -> String                            -- ^Variable name
            -> Term1                             -- ^Lambda body
            -> Term1
@@ -516,11 +516,11 @@ makeLambda bindings str term1 =
         v = vars term1
         unbound = ((v \\ bindings') \\ Set.singleton str)
 
-validateVariables :: [(String, UnprocessedParsedTerm)] -- * Prelude
-                  -> UnprocessedParsedTerm
+validateVariables :: [(String, BaseUnprocessedParsedTerm a)] -- * Prelude
+                  -> BaseUnprocessedParsedTerm b
                   -> Either String Term1
 validateVariables prelude term =
-  let validateWithEnvironment :: UnprocessedParsedTerm
+  let validateWithEnvironment :: BaseUnprocessedParsedTerm b
                               -> State.StateT (Map String Term1) (Either String) Term1
       validateWithEnvironment = \case
         -- CaseUP p cases -> do
@@ -565,16 +565,26 @@ validateVariables prelude term =
 generateCondition :: BaseUnprocessedParsedTerm a -- * match
                   -> BaseUnprocessedParsedTerm b -- * i corresponding to the ITE of this match
 generateCondition upt = State.evalState (step upt) id
-  where step :: (BaseUnprocessedParsedTerm a)
+  where step :: (BaseUnprocessedParsedTerm a1)
              -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
-        step = \case
+        step y = case y of
           VarUP _ -> pure uptTrue
           IntUP i -> doInt i
-          StringUP str -> foldr (\a b -> doPair (step a) b) (doInt 0) (s2intupList str)
-          ListUP lst -> foldr (\a b -> doPair (step a) b) (doInt 0) lst
+          StringUP str -> foldr (\aaa b -> doPair (step aaa) b) (doInt 0) (s2intupList str)
+          ListUP (lst :: [BaseUnprocessedParsedTerm a1]) -> foldr (\a b -> doPair (step a) b) (doInt 0) lst
           PairUP a b -> doPair (step a) (step b)
-          -- AppUP a b -> undefined
-          x -> error "Pattern matching currently only allowed for Pair, Zero, Integers, Strings and Lists."
+          -- This next cases are for user defined types with limited number of arguments
+          (AppUP (VarUP "left") (VarUP str)) -> -- `str == ""` Should always be false because variable names cannot be of length zero.
+            case isUpper . head $ str of
+              True  -> pure uptTrue -- This is wrong. It needs more validation.
+              False -> pure uptFalse
+          -- (AppUP (AppUP (VarUP "left") (VarUP "MyInt")) (IntUP 8)) -- TODO: Not to future self: This case should be the one triggered with MyInt on example.tel, but it isn't.
+          (AppUP (AppUP (VarUP "left") (VarUP str    )) u) ->
+            case isUpper . head $ str of
+              False -> pure uptFalse
+              True  -> step upt
+
+          x -> error $ "Pattern matching currently only allowed for Pair, Zero, Integers, Strings and Lists." -- TODO: Not to future self: failed to do `show x`. This would be convenient to see why the desierd case isn't triggered.
         uptTrue = IntUP 1
         uptFalse = IntUP 0
         doInt :: Int -> State (BaseUnprocessedParsedTerm b -> BaseUnprocessedParsedTerm b) (BaseUnprocessedParsedTerm b)
@@ -587,14 +597,6 @@ generateCondition upt = State.evalState (step upt) id
         doPair a b = do
           f <- State.get
           pairWrapper f <$> (State.put (LeftUP . f) >> a) <*> (State.put (RightUP . f) >> b)
-
-        -- isUniqueUP :: (BaseUnprocessedParsedTerm a -> BaseUnprocessedParsedTerm a) -- * State acumulator
-        --            -> BaseUnprocessedParsedTerm a                                  -- * UPT with isUniqueUP
-        --            -> BaseUnprocessedParsedTerm a                                  -- * UPT without isUniqueUP
-        -- isUniqueUP f i = undefined
-
-        -- isLeafList = \f lst -> AppUP (AppUP (VarUP "listEqual") (f $ VarUP "patternn")) (ListUP lst)
-
         isLeafInt = \f i -> AppUP (AppUP (VarUP "dEqual") (f $ VarUP "patternn")) (IntUP i)
         pairWrapper = \f x y -> ITEUP
                                   (f $ VarUP "patternn")
@@ -706,6 +708,7 @@ process :: [(String, UnprocessedParsedTerm)] -- *Prelude
 process prelude = fmap splitExpr
                 . (>>= debruijinize [])
                 . validateVariables prelude
+                . removeCaseUP
                 . optimizeBuiltinFunctions
                 . generateAllUniques
 
@@ -721,6 +724,12 @@ parseMain :: [(String, UnprocessedParsedTerm)] -- *Prelude
           -> Either String Term3               -- *Error on Left
 parseMain prelude s = parseWithPrelude prelude s >>= process prelude
 
+
+test = unlines
+  [ "case myConst of"
+  , "  ((left MyInt) 8) -> (\"Success path.\", 1)"
+  , "  y                -> (\"Test failed.\", 0)"
+  ]
 
 -- LetUP [ ( "MyInt"
 --         , LetUP [ ("intTag"
