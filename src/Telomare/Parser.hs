@@ -326,9 +326,9 @@ parseLet :: TelomareParser UnprocessedParsedTerm
 parseLet = do
   reserved "let" <* scn
   lvl <- L.indentLevel
-  bindingsList <- manyTill (parseSameLvl lvl parseAssignment) (reserved "in") <* scn
+  bindingsList <- manyTill (parseSameLvl lvl  (parsePairAssignment <|> (pure <$> parseAssignment))) (reserved "in") <* scn -- add either parseAssignment
   expr <- parseLongExpr <* scn
-  pure $ LetUP bindingsList expr
+  pure $ LetUP (concat bindingsList) expr
 
 -- |Parse long expression.
 parseLongExpr :: TelomareParser UnprocessedParsedTerm
@@ -361,6 +361,20 @@ parseAssignment = do
     Just annot -> pure (var, annot expr)
     _          -> pure (var, expr)
 
+parseIdentifierPair :: TelomareParser (String, String)
+parseIdentifierPair = parens $ do
+   vara <- identifier  <* scn
+   scn *> symbol "," <?> "missing ',' symbol"
+   varb <- scn *>  identifier <* scn
+   pure (vara, varb)
+
+parsePairAssignment :: TelomareParser [(String, UnprocessedParsedTerm)] 
+parsePairAssignment =  do
+  (vara, varb) <- scn *> parseIdentifierPair <* scn
+  symbol "=" <?> "assignment ="
+  PairUP expra exprb <- scn *> parsePair <* scn
+  pure [(vara, expra), (varb, exprb)]
+                            
 -- |Parse top level expressions.
 parseTopLevel :: TelomareParser UnprocessedParsedTerm
 parseTopLevel = parseTopLevelWithPrelude []

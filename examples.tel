@@ -1,7 +1,7 @@
 -- File for small illustrative telomare programs and for testing
 
 -- Hello World example.
-main = \input -> ("Hello, World!", 0)
+main = \input -> let (a, b) = (1,0) in  b
 
 -- Simple example of ad-hoc user defined types
 -- MyInt = let wrapper = \h -> ( \i -> if not i
