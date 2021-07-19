@@ -59,7 +59,7 @@ data UnprocessedParsedTerm
   | RightUP UnprocessedParsedTerm
   | TraceUP UnprocessedParsedTerm
   | CheckUP UnprocessedParsedTerm UnprocessedParsedTerm
-  | UniqueUP UnprocessedParsedTerm -- ^ On ad hoc user defined types, this term will be substitued to a unique Int.
+  | HashUP UnprocessedParsedTerm -- ^ On ad hoc user defined types, this term will be substitued to a unique Int.
   -- TODO check
   deriving (Eq, Ord, Show)
 makeBaseFunctor ''UnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
@@ -280,7 +280,7 @@ parseUnique :: TelomareParser UnprocessedParsedTerm
 parseUnique = do
   symbol "#" <* scn
   upt <- parseSingleExpr :: TelomareParser UnprocessedParsedTerm
-  pure $ UniqueUP upt
+  pure $ HashUP upt
 
 -- |Parse a single expression.
 parseSingleExpr :: TelomareParser UnprocessedParsedTerm
