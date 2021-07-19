@@ -328,7 +328,7 @@ parseLet :: TelomareParser UnprocessedParsedTerm
 parseLet = do
   reserved "let" <* scn
   lvl <- L.indentLevel
-  bindingsList <- manyTill (parseSameLvl lvl  (parsePairAssignment <|> (pure <$> parseAssignment))) (reserved "in") <* scn -- add either parseAssignment
+  bindingsList <- manyTill (parseSameLvl lvl  (parsePairAssignments <|> (pure <$> parseAssignment))) (reserved "in") <* scn -- add either parseAssignment
   expr <- parseLongExpr <* scn
   pure $ LetUP (concat bindingsList) expr
 
@@ -363,20 +363,35 @@ parseAssignment = do
     Just annot -> pure (var, annot expr)
     _          -> pure (var, expr)
 
-parseIdentifierPair :: TelomareParser (String, String)
+parseIdentifierPair :: TelomareParser UnprocessedParsedTerm
 parseIdentifierPair = parens $ do
-   vara <- identifier  <* scn
-   scn *> symbol "," <?> "missing ',' symbol"
-   varb <- scn *>  identifier <* scn
-   pure (vara, varb)
+   a <- identifier  <* scn
+   symbol "," <?> "missing ',' symbol"
+   b <- scn *> parseIdentifierPair <|> (StringUP <$> identifier) <* scn
+   case b of
+     PairUP _ _ ->  pure $ PairUP (StringUP a)  b
+     x          ->  pure $ PairUP (StringUP a) x
 
-parsePairAssignment :: TelomareParser [(String, UnprocessedParsedTerm)] 
-parsePairAssignment =  do
-  (vara, varb) <- scn *> parseIdentifierPair <* scn
+parseExpressionPair :: TelomareParser UnprocessedParsedTerm
+parseExpressionPair = parens $ do
+   expra <- parseLongExpr  <* scn
+   symbol "," <?> "missing ',' symbol"
+   exprb <- scn *> parseExpressionPair <|> parseLongExpr  <* scn
+   pure $ PairUP expra exprb
+
+parsePairAssignments :: TelomareParser [(String, UnprocessedParsedTerm)]
+parsePairAssignments =  do
+  vars <- scn *> parseIdentifierPair <* scn
   symbol "=" <?> "assignment ="
-  PairUP expra exprb <- scn *> parsePair <* scn
-  pure [(vara, expra), (varb, exprb)]
-                            
+  exprs <- scn *> parseExpressionPair <* scn
+  pure $ zipAssignmentPairs vars exprs
+
+zipAssignmentPairs :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> [(String, UnprocessedParsedTerm)]
+zipAssignmentPairs (PairUP (StringUP a) (PairUP b c)) (PairUP expra expr) = (a, expra) : zipAssignmentPairs (PairUP b c) expr
+zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) (PairUP expra exprb) = [(a, expra), (b, exprb)]
+zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) _ = error "number of variables exceeds number of expressions"
+
+
 -- |Parse top level expressions.
 parseTopLevel :: TelomareParser UnprocessedParsedTerm
 parseTopLevel = parseTopLevelWithPrelude []
