@@ -50,6 +50,7 @@ tests = testGroup "Tests" [unitTests, qcProps]
 
 qcProps = testGroup "Property tests (QuickCheck)"
   [ QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of HashUP's" $
+<<<<<<< HEAD
       \x -> withMaxSuccess 16 $
         containsTHash x QC.==> checkAllHashes . generateAllHashes $ x
   -- , QC.testProperty "Have the total amount of THash + ? be equal to total ? after generateAllHashes" $
@@ -101,6 +102,64 @@ diffTerm2 = \case
   (TLeft a, TLeft a') -> diffTerm2 (a, a')
   (TRight a, TRight a') -> diffTerm2 (a, a')
   (TTrace a, TTrace a') -> diffTerm2 (a, a')
+=======
+      \x ->
+        containsHashUP x QC.==> checkAllUniques . generateAllUniques $ x
+  , QC.testProperty "Have the total amount of HashUP + ListUP be equal to total ListUP after generateAllUniques" $
+      \x ->
+        containsHashUP x QC.==> checkNumberOfUniques x
+  , QC.testProperty "See that generateAllUniques only changes HashUP to ListUP" $
+      \x ->
+        containsHashUP x QC.==> onlyHashUPAndIntUP x
+  ]
+
+checkNumberOfUniques :: UnprocessedParsedTerm -> Bool
+checkNumberOfUniques upt = let tupt = generateAllUniques upt
+                           in ((length $ upt ^.. (cosmos . _HashUP)) + (length $ upt ^.. (cosmos . _ListUP))) == (length $ tupt ^.. (cosmos . _ListUP))
+
+containsHashUP :: UnprocessedParsedTerm -> Bool
+containsHashUP = \case
+  HashUP _  -> True
+  LetUP xs a  -> containsHashUP a || (or $ (containsHashUP . snd) <$> xs)
+  ITEUP a b c -> containsHashUP a || containsHashUP b || containsHashUP c
+  ListUP ls   -> or $ containsHashUP <$> ls
+  PairUP a b  -> containsHashUP a || containsHashUP b
+  AppUP a b   -> containsHashUP a || containsHashUP b
+  CheckUP a b -> containsHashUP a || containsHashUP b
+  LamUP _ a   -> containsHashUP a
+  LeftUP a    -> containsHashUP a
+  RightUP a   -> containsHashUP a
+  TraceUP a   -> containsHashUP a
+  x           -> False
+
+onlyHashUPAndIntUP :: UnprocessedParsedTerm -> Bool
+onlyHashUPAndIntUP upt = let diffList = diffUPT (upt, generateAllUniques upt)
+                             isHashUP :: UnprocessedParsedTerm -> Bool
+                             isHashUP = \case
+                               HashUP _ -> True
+                               _        -> False
+                             isListUP :: UnprocessedParsedTerm -> Bool
+                             isListUP = \case
+                               ListUP _ -> True
+                               _        -> False
+                         in and $ fmap (isHashUP . fst) diffList ++ fmap (isListUP . snd) diffList
+
+diffUPT :: (UnprocessedParsedTerm, UnprocessedParsedTerm) -> [(UnprocessedParsedTerm, UnprocessedParsedTerm)]
+diffUPT = \case
+  (ITEUP a b c, ITEUP a' b' c') -> diffUPT (a, a') ++ diffUPT (b, b') ++ diffUPT (c, c')
+  (ListUP ls, ListUP ls') -> concat $ diffUPT <$> (zip ls ls')
+  (PairUP a b, PairUP a' b') -> diffUPT (a, a') ++ diffUPT (b, b')
+  (AppUP a b, AppUP a' b') -> diffUPT (a, a') ++ diffUPT (b, b')
+  (CheckUP a b, CheckUP a' b') -> diffUPT (a, a') ++ diffUPT (b, b')
+  (LamUP _ a, LamUP _ a') -> diffUPT (a, a')
+  (LeftUP a, LeftUP a') -> diffUPT (a, a')
+  (RightUP a, RightUP a') -> diffUPT (a, a')
+  (TraceUP a, TraceUP a') -> diffUPT (a, a')
+  (LetUP xs a, LetUP xs' a') -> diffUPT (a, a') ++ (concat $ diffUPT <$> zs)
+    where ys = snd <$> xs
+          ys'= snd <$> xs'
+          zs = zip ys ys'
+>>>>>>> 7d4f926 (updated pair pattern matching)
   (x, x') | x /= x' -> [(x, x')]
   _ -> []
 
@@ -117,6 +176,7 @@ allHashesToTerm2 term2 =
   let term2WithoutTHash = generateAllHashes term2
       interm :: (Term2, Term2) -> [Term2]
       interm = \case
+<<<<<<< HEAD
         (THash _ , x) -> [x]
         (TITE a b c, TITE a' b' c') -> interm (a, a') <> interm (b, b') <> interm (c, c')
         (TPair a b, TPair a' b') -> interm (a, a') <> interm (b, b')
@@ -127,6 +187,23 @@ allHashesToTerm2 term2 =
         (TRight a, TRight a') -> interm (a, a')
         (TTrace a, TTrace a') -> interm (a, a')
         (x, x') | x /= x' -> error "x and x' should be the same (inside of allHashesToTerm2, within interm)"
+=======
+        (HashUP _ , ListUP x) -> [x]
+        (ITEUP a b c, ITEUP a' b' c') -> interm (a, a') ++ interm (b, b') ++ interm (c, c')
+        (ListUP ls, ListUP ls') -> concat $ interm <$> (zip ls ls')
+        (PairUP a b, PairUP a' b') -> interm (a, a') ++ interm (b, b')
+        (AppUP a b, AppUP a' b') -> interm (a, a') ++ interm (b, b')
+        (CheckUP a b, CheckUP a' b') -> interm (a, a') ++ interm (b, b')
+        (LamUP _ a, LamUP _ a') -> interm (a, a')
+        (LeftUP a, LeftUP a') -> interm (a, a')
+        (RightUP a, RightUP a') -> interm (a, a')
+        (TraceUP a, TraceUP a') -> interm (a, a')
+        (LetUP xs a, LetUP xs' a') -> interm (a, a') ++ (concat $ interm <$> zs)
+          where ys = snd <$> xs
+                ys'= snd <$> xs'
+                zs = zip ys ys'
+        (x, x') | x /= x' -> error "x and x' should be the same (inside of allUniquesToIntUPList, within interm)"
+>>>>>>> 7d4f926 (updated pair pattern matching)
         (x, x') -> []
   in curry interm term2 term2WithoutTHash
 
