@@ -363,18 +363,17 @@ parseAssignment = do
 
 parseIdentifierPair :: TelomareParser UnprocessedParsedTerm
 parseIdentifierPair = parens $ do
-   a <- identifier  <* scn
+   a <-  parseIdentifierPair <|> (StringUP <$> identifier)  <* scn
    symbol "," <?> "missing ',' symbol"
    b <- scn *> parseIdentifierPair <|> (StringUP <$> identifier) <* scn
-   case b of
-     PairUP _ _ ->  pure $ PairUP (StringUP a)  b
-     x ->  pure $ PairUP (StringUP a) x
+   pure $ PairUP a b
+  
 
 parseExpressionPair :: TelomareParser UnprocessedParsedTerm
 parseExpressionPair = parens $ do
-   expra <- parseLongExpr  <* scn
+   expra <-  parseExpressionPair <|> parseLongExpr <* scn
    symbol "," <?> "missing ',' symbol"
-   exprb <- scn *> parseExpressionPair <|> parseLongExpr  <* scn
+   exprb <- scn *> parseExpressionPair <|> parseLongExpr <* scn
    pure $ PairUP expra exprb
    
 parsePairAssignments :: TelomareParser [(String, UnprocessedParsedTerm)] 
@@ -385,9 +384,11 @@ parsePairAssignments =  do
   pure $ zipAssignmentPairs vars exprs
 
 zipAssignmentPairs :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> [(String, UnprocessedParsedTerm)]
-zipAssignmentPairs (PairUP (StringUP a) (PairUP b c)) (PairUP expra expr) = (a, expra) : zipAssignmentPairs (PairUP b c) expr
+zipAssignmentPairs (PairUP (PairUP a b) (PairUP c d)) (PairUP expr expr') = zipAssignmentPairs (PairUP a b) expr <> zipAssignmentPairs (PairUP c d) expr'
+zipAssignmentPairs (PairUP (StringUP a) (PairUP c d)) (PairUP expr expr') =  (a, expr) : zipAssignmentPairs (PairUP c d) expr'
+zipAssignmentPairs (PairUP (PairUP a b) (StringUP c)) (PairUP expr expr') =  (c, expr') : zipAssignmentPairs (PairUP a b) expr
 zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) (PairUP expra exprb) = [(a, expra), (b, exprb)]
-zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) _ = error "number of variables exceeds number of expressions"
+zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) _ = error "variables improperly assigned"
 
                             
 -- |Parse top level expressions.
