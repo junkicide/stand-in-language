@@ -390,6 +390,8 @@ zipAssignmentPairs (PairUP (PairUP a b) (StringUP c)) (PairUP expr expr') =  (c,
 zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) (PairUP expra exprb) = [(a, expra), (b, exprb)]
 zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) _ = error "variables improperly assigned"
 
+
+
                             
 -- |Parse top level expressions.
 parseTopLevel :: TelomareParser UnprocessedParsedTerm
