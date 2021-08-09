@@ -136,7 +136,6 @@ instance Plated (ParserTerm l v) where
     TCheck c x -> TCheck <$> f c <*> f x
     x          -> pure x
 
-
 instance (Show l, Show v) => Show (ParserTerm l v) where
   show x = State.evalState (cata alg $ x) 0 where
     alg :: (Base (ParserTerm l v)) (State Int String) -> State Int String

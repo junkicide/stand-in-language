@@ -65,6 +65,48 @@ data UnprocessedParsedTerm
 makeBaseFunctor ''UnprocessedParsedTerm -- Functorial version UnprocessedParsedTerm
 makePrisms ''UnprocessedParsedTerm
 
+-- instance Show UnprocessedParsedTerm where
+--   show x = State.evalState (cata alg $ x) 0 where
+--     alg :: (Base UnprocessedParsedTerm) (State Int String) -> State Int String
+--     alg (VarUPF str)
+--     alg (ITEUPF sx sy sz)
+--     alg (LetUPF
+--     alg (ListUPF
+--     alg (IntUPF
+--     alg (StringUPF
+--     alg (PairUPF
+--     alg (AppUPF
+--     alg (LamUPF
+--     alg (ChurchUPF
+--     alg (UnsizedRecursionUPF
+--     alg (LeftUPF
+--     alg (RightUPF
+--     alg (TraceUPF
+--     alg (CheckUPF
+--     alg (HashUPF
+
+--     alg TZeroF = sindent "TZero"
+--     alg (TPairF sl sr) = indentWithTwoChildren "TPair" sl sr
+--     alg (TVarF v) = sindent $ "TVar " <> show v
+--     alg (TAppF sl sr) = indentWithTwoChildren "TApp" sl sr
+--     alg (TCheckF sl sr) = indentWithTwoChildren "TCheck" sl sr
+--     alg (TITEF sx sy sz) = do
+--       i <- State.get
+--       State.put $ i + 2
+--       x <- sx
+--       State.put $ i + 2
+--       y <- sy
+--       State.put $ i + 2
+--       z <- sz
+--       pure $ indent i "TITE\n" <> x <> "\n" <> y <> "\n" <> z
+--     alg (TLeftF l) = indentWithOneChild "TLeft" l
+--     alg (TRightF r) = indentWithOneChild "TRight" r
+--     alg (TTraceF x) = indentWithOneChild "TTrace" x
+--     alg (THashF x) = indentWithOneChild "THash" x
+--     alg (TLamF l x) = indentWithOneChild ("TLam " <> show l) x
+--     alg TLimitedRecursionF = sindent "TLimitedRecursion"
+
+
 instance Plated UnprocessedParsedTerm where
   plate f = \case
     ITEUP i t e -> ITEUP <$> f i <*> f t <*> f e
