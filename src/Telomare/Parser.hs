@@ -451,15 +451,18 @@ zipAssignmentPairs (PairUP x y) (PairUP expr expr') = case x of
   PairUP a b -> case y of
     PairUP c d ->  zipAssignmentPairs x expr <> zipAssignmentPairs y expr' -- order of concatenation is arbitrary but perhaps one order is better than the other
     StringUP c ->  (c, expr') : zipAssignmentPairs x expr
-    ListUP c   -> (zipAssignmentList y expr') <> zipAssignmentPairs x expr
+    ListUP c   -> zipAssignmentList y expr' <> zipAssignmentPairs x expr
+    _          -> error "not a pair, list or string"
   StringUP a -> case y of
     PairUP c d ->  (a, expr) : zipAssignmentPairs y expr'
     StringUP b ->  [(a, expr), (b, expr')]
     ListUP c   ->  (a, expr) : zipAssignmentList y expr'
+    _          -> error "not a pair, list or string"
   ListUP a   -> case y of
     PairUP c d ->  zipAssignmentList x expr <> zipAssignmentPairs y expr'
     StringUP b ->  (b, expr'): zipAssignmentList x expr
     ListUP c   ->  zipAssignmentList x expr <> zipAssignmentList y expr'
+    _          -> error "not a pair, list or string"
 zipAssignmentPairs _ _ = error "variables improperly assigned"
 
 -- |Parse top level expressions.
