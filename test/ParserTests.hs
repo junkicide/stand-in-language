@@ -49,7 +49,9 @@ tests :: TestTree
 tests = testGroup "Tests" [unitTests, qcProps]
 
 qcProps = testGroup "Property tests (QuickCheck)"
-  [ QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of HashUP's" $
+  [  QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of HashUP's" $
+      \x -> 
+  ,  QC.testProperty "Arbitrary UnprocessedParsedTerm to test hash uniqueness of HashUP's" $
       \x -> withMaxSuccess 16 $
         containsTHash x QC.==> checkAllHashes . generateAllHashes $ x
   -- , QC.testProperty "Have the total amount of THash + ? be equal to total ? after generateAllHashes" $

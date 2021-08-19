@@ -370,7 +370,7 @@ parseLet :: TelomareParser UnprocessedParsedTerm
 parseLet = do
   reserved "let" <* scn
   lvl <- L.indentLevel
-  bindingsList <- manyTill (parseSameLvl lvl  (parsePairAssignments <|> (pure <$> parseAssignment))) (reserved "in") <* scn -- add either parseAssignment
+  bindingsList <- manyTill (parseSameLvl lvl  (parsePairAssignments <|> parseListAssignments <|> (pure <$> parseAssignment))) (reserved "in") <* scn -- add either parseAssignment
   expr <- parseLongExpr <* scn
   pure $ LetUP (concat bindingsList) expr
 
@@ -406,11 +406,17 @@ parseAssignment = do
     _          -> pure (var, expr)
 
 parseIdentifierPair :: TelomareParser UnprocessedParsedTerm
-parseIdentifierPair = parens $ do
-  a <-  parseIdentifierPair <|> (StringUP <$> identifier)  <* scn
+parseIdentifierPair = parens  $ do
+  a <-  parseIdentifierList <|> parseIdentifierPair  <|>  (StringUP <$> identifier)  <* scn
   symbol "," <?> "missing ',' symbol"
-  b <- scn *> parseIdentifierPair <|> (StringUP <$> identifier) <* scn
+  b <- scn *> parseIdentifierList <|> parseIdentifierPair <|> (StringUP <$> identifier) <* scn
   pure $ PairUP a b
+
+parseIdentifierList :: TelomareParser UnprocessedParsedTerm
+parseIdentifierList =  fmap ListUP <$> brackets $ commaSep ( scn *> parseIdentifierPair <|> parseIdentifierList <|> (StringUP <$> identifier) <* scn)
+
+parseExpressionList :: TelomareParser UnprocessedParsedTerm
+parseExpressionList =  fmap ListUP <$> brackets $ commaSep ( scn *> parseExpressionPair <|> parseExpressionList <|> parseLongExpr <* scn)
 
 parseExpressionPair :: TelomareParser UnprocessedParsedTerm
 parseExpressionPair = parens $ do
@@ -426,12 +432,35 @@ parsePairAssignments =  do
   exprs <- scn *> parseExpressionPair <* scn
   pure $ zipAssignmentPairs vars exprs
 
+parseListAssignments :: TelomareParser [(String, UnprocessedParsedTerm)]
+parseListAssignments =  do
+  vars <- scn *> parseIdentifierList <* scn
+  symbol "=" <?> "assignment ="
+  exprs <- scn *> parseExpressionList <* scn
+  pure $ zipAssignmentList vars exprs
+
+zipAssignmentList :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> [(String, UnprocessedParsedTerm)]
+zipAssignmentList (ListUP []) (ListUP []) = []
+zipAssignmentList (ListUP ((ListUP x) : xs)) (ListUP ((ListUP y) :ys)) = zipAssignmentList (ListUP x) (ListUP y) <> zipAssignmentList (ListUP xs) (ListUP ys)
+zipAssignmentList (ListUP ((PairUP x x') : xs)) (ListUP ((PairUP y y') :ys)) = zipAssignmentPairs (PairUP x x') (PairUP y y') <> zipAssignmentList (ListUP xs) (ListUP ys)
+zipAssignmentList (ListUP ((StringUP x) : xs)) (ListUP (y:ys)) = (x, y): zipAssignmentList (ListUP xs) (ListUP ys)
+zipAssignmentList _ _ = error "variables improperly assigned"
+
 zipAssignmentPairs :: UnprocessedParsedTerm -> UnprocessedParsedTerm -> [(String, UnprocessedParsedTerm)]
-zipAssignmentPairs (PairUP (PairUP a b) (PairUP c d)) (PairUP expr expr') = zipAssignmentPairs (PairUP a b) expr <> zipAssignmentPairs (PairUP c d) expr'
-zipAssignmentPairs (PairUP (StringUP a) (PairUP c d)) (PairUP expr expr') =  (a, expr) : zipAssignmentPairs (PairUP c d) expr'
-zipAssignmentPairs (PairUP (PairUP a b) (StringUP c)) (PairUP expr expr') =  (c, expr') : zipAssignmentPairs (PairUP a b) expr
-zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) (PairUP expra exprb) = [(a, expra), (b, exprb)]
-zipAssignmentPairs (PairUP (StringUP a) (StringUP b)) _ = error "variables improperly assigned"
+zipAssignmentPairs (PairUP x y) (PairUP expr expr') = case x of
+  PairUP a b -> case y of
+    PairUP c d ->  zipAssignmentPairs x expr <> zipAssignmentPairs y expr' -- order of concatenation is arbitrary but perhaps one order is better than the other
+    StringUP c ->  (c, expr') : zipAssignmentPairs x expr
+    ListUP c   -> (zipAssignmentList y expr') <> zipAssignmentPairs x expr
+  StringUP a -> case y of
+    PairUP c d ->  (a, expr) : zipAssignmentPairs y expr'
+    StringUP b ->  [(a, expr), (b, expr')]
+    ListUP c   ->  (a, expr) : zipAssignmentList y expr'
+  ListUP a   -> case y of
+    PairUP c d ->  zipAssignmentList x expr <> zipAssignmentPairs y expr'
+    StringUP b ->  (b, expr'): zipAssignmentList x expr
+    ListUP c   ->  zipAssignmentList x expr <> zipAssignmentList y expr'
+zipAssignmentPairs _ _ = error "variables improperly assigned"
 
 -- |Parse top level expressions.
 parseTopLevel :: TelomareParser UnprocessedParsedTerm
@@ -443,7 +472,6 @@ parseTopLevelWithPrelude :: [(String, UnprocessedParsedTerm)]    -- ^Prelude
 parseTopLevelWithPrelude lst = do
   bindingList <- scn *> many parseAssignment <* eof
   pure $ LetUP (lst <> bindingList) (fromJust $ lookup "main" bindingList)
-
 
 parseDefinitions :: TelomareParser (UnprocessedParsedTerm -> UnprocessedParsedTerm)
 parseDefinitions = do
