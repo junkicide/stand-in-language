@@ -463,6 +463,7 @@ zipAssignmentPairs (PairUP x y) (PairUP expr expr') = case x of
     StringUP b ->  (b, expr'): zipAssignmentList x expr
     ListUP c   ->  zipAssignmentList x expr <> zipAssignmentList y expr'
     _          -> error "not a pair, list or string"
+  _ -> error "not a pair, list or string"
 zipAssignmentPairs _ _ = error "variables improperly assigned"
 
 -- |Parse top level expressions.
